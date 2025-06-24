@@ -23,7 +23,7 @@ RUN apt-get -y --no-install-recommends install wget \
         postgresql
 
 COPY --from=builder /work/target/release/deepbook-indexer /opt/mysten/bin/
-COPY --from=builder /work/entry_indexer.sh .
+COPY docker/entry_indexer.sh .
 RUN ["chmod", "+x", "/opt/mysten/bin/deepbook-indexer"]
 RUN ["chmod", "+x", "entry_indexer.sh"]
 

@@ -23,7 +23,7 @@ RUN apt-get -y --no-install-recommends install wget \
         postgresql
 
 COPY --from=builder /work/target/release/deepbook-server /opt/mysten/bin/
-COPY --from=builder /work/entry_api.sh .
+COPY docker/entry_api.sh .
 RUN ["chmod", "+x", "/opt/mysten/bin/deepbook-server"]
 RUN ["chmod", "+x", "entry_api.sh"]
 
