@@ -1,16 +1,30 @@
 use crate::schema::{
-    balances, balances_summary, flashloans, order_fills, order_updates, pool_prices, pools,
-    proposals, rebates, stakes, sui_error_transactions, trade_params_update, votes,
+    balances,
+    balances_summary,
+    flashloans,
+    order_fills,
+    order_updates,
+    pool_prices,
+    pools,
+    proposals,
+    rebates,
+    stakes,
+    sui_error_transactions,
+    trade_params_update,
+    votes,
 };
+use crate::view::ohlcv_1min;
+use chrono::NaiveDateTime;
 use diesel::deserialize::FromSql;
-use diesel::pg::{Pg, PgValue};
-use diesel::serialize::{Output, ToSql};
+use diesel::pg::{ Pg, PgValue };
+use diesel::serialize::{ Output, ToSql };
 use diesel::sql_types::Text;
-use diesel::{AsExpression, Identifiable, Insertable, Queryable, QueryableByName, Selectable};
+use diesel::{ AsExpression, Identifiable, Insertable, Queryable, QueryableByName, Selectable };
 use serde::Serialize;
 use std::str::FromStr;
-use strum_macros::{AsRefStr, EnumString};
+use strum_macros::{ AsRefStr, EnumString };
 use sui_field_count::FieldCount;
+use bigdecimal::BigDecimal;
 
 #[derive(Queryable, Selectable, Insertable, Identifiable, Debug, FieldCount)]
 #[diesel(table_name = order_updates, primary_key(event_digest))]
@@ -251,4 +265,17 @@ pub struct SuiErrorTransactions {
     pub failure_status: String,
     pub package: String,
     pub cmd_idx: Option<i64>,
+}
+
+#[derive(Queryable, Selectable, Debug, FieldCount)]
+#[diesel(table_name = ohlcv_1min)]
+pub struct OHLCV1min {
+    pub bucket: NaiveDateTime,
+    pub pool_id: String,
+    pub open: i64,
+    pub high: i64,
+    pub low: i64,
+    pub close: i64,
+    pub volume_base: BigDecimal,
+    pub volume_quote: BigDecimal,
 }

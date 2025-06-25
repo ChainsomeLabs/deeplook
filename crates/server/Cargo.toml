@@ -7,11 +7,19 @@ publish = false
 edition = "2021"
 
 [dependencies]
+bigdecimal.workspace = true
+chrono.workspace = true
 deepbook-schema = { path = "../schema" }
 tokio.workspace = true
 futures = "0.3.31"
 clap = { workspace = true, features = ["env"] }
-diesel = { workspace = true, features = ["postgres", "uuid", "chrono", "serde_json", "numeric"] }
+diesel = { workspace = true, features = [
+  "postgres",
+  "uuid",
+  "chrono",
+  "serde_json",
+  "numeric",
+] }
 diesel-async = { workspace = true, features = ["bb8", "postgres"] }
 bcs.workspace = true
 anyhow.workspace = true
