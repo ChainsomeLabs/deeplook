@@ -10,5 +10,6 @@ diesel::table! {
         low -> BigInt,
         close -> BigInt,
         volume_base -> Numeric,
+        volume_quote -> Numeric,
     }
 }

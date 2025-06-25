@@ -3,24 +3,20 @@
 
 use crate::error::DeepBookError;
 use axum::http::Method;
-use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
-    routing::get,
-    Json, Router,
-};
-use deepbook_schema::models::{BalancesSummary, Pools};
+use axum::{ extract::{ Path, Query, State }, http::StatusCode, routing::get, Json, Router };
+use chrono::{ DateTime };
+use deepbook_schema::models::{ BalancesSummary, OHLCV1min, Pools };
 use deepbook_schema::*;
 use diesel::dsl::count_star;
-use diesel::dsl::{max, min};
-use diesel::{ExpressionMethods, QueryDsl};
+use diesel::dsl::{ max, min };
+use diesel::{ ExpressionMethods, QueryDsl, SelectableHelper };
 use serde_json::Value;
-use std::net::{IpAddr, Ipv4Addr};
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::{collections::HashMap, net::SocketAddr};
+use std::net::{ IpAddr, Ipv4Addr };
+use std::time::{ SystemTime, UNIX_EPOCH };
+use std::{ collections::HashMap, net::SocketAddr };
 use sui_pg_db::DbArgs;
 use tokio::net::TcpListener;
-use tower_http::cors::{AllowMethods, Any, CorsLayer};
+use tower_http::cors::{ AllowMethods, Any, CorsLayer };
 use url::Url;
 
 use crate::metrics::middleware::track_metrics;
@@ -31,13 +27,13 @@ use futures::future::join_all;
 use prometheus::Registry;
 use std::str::FromStr;
 use std::sync::Arc;
-use sui_indexer_alt_metrics::{MetricsArgs, MetricsService};
-use sui_json_rpc_types::{SuiObjectData, SuiObjectDataOptions, SuiObjectResponse};
+use sui_indexer_alt_metrics::{ MetricsArgs, MetricsService };
+use sui_json_rpc_types::{ SuiObjectData, SuiObjectDataOptions, SuiObjectResponse };
 use sui_sdk::SuiClientBuilder;
 use sui_types::{
-    base_types::{ObjectID, ObjectRef, SuiAddress},
+    base_types::{ ObjectID, ObjectRef, SuiAddress },
     programmable_transaction_builder::ProgrammableTransactionBuilder,
-    transaction::{Argument, CallArg, Command, ObjectArg, ProgrammableMoveCall, TransactionKind},
+    transaction::{ Argument, CallArg, Command, ObjectArg, ProgrammableMoveCall, TransactionKind },
     type_input::TypeInput,
     TypeTag,
 };
@@ -71,10 +67,11 @@ pub const DEEP_TREASURY_ID: &str =
 pub const DEEP_SUPPLY_MODULE: &str = "deep";
 pub const DEEP_SUPPLY_FUNCTION: &str = "total_supply";
 pub const DEEP_SUPPLY_PATH: &str = "/deep_supply";
+pub const OHLCV_PATH: &str = "/ohlcv/:pool_name";
 
 #[derive(Clone)]
 pub struct AppState {
-    reader: Reader,
+    pub reader: Reader,
     metrics: Arc<RpcMetrics>,
 }
 
@@ -82,7 +79,7 @@ impl AppState {
     pub async fn new(
         database_url: Url,
         args: DbArgs,
-        registry: &Registry,
+        registry: &Registry
     ) -> Result<Self, anyhow::Error> {
         let metrics = RpcMetrics::new(registry);
         let reader = Reader::new(database_url, args, metrics.clone(), registry).await?;
@@ -99,15 +96,16 @@ pub async fn run_server(
     db_arg: DbArgs,
     rpc_url: Url,
     cancellation_token: CancellationToken,
-    metrics_address: SocketAddr,
+    metrics_address: SocketAddr
 ) -> Result<(), anyhow::Error> {
-    let registry = Registry::new_custom(Some("deepbook_api".into()), None)
-        .expect("Failed to create Prometheus registry.");
+    let registry = Registry::new_custom(Some("deepbook_api".into()), None).expect(
+        "Failed to create Prometheus registry."
+    );
 
     let metrics = MetricsService::new(
         MetricsArgs { metrics_address },
         registry,
-        cancellation_token.clone(),
+        cancellation_token.clone()
     );
 
     let state = AppState::new(database_url, db_arg, metrics.registry()).await?;
@@ -120,11 +118,9 @@ pub async fn run_server(
     });
 
     let listener = TcpListener::bind(socket_address).await?;
-    axum::serve(listener, make_router(Arc::new(state), rpc_url))
-        .with_graceful_shutdown(async move {
-            cancellation_token.cancelled().await;
-        })
-        .await?;
+    axum::serve(listener, make_router(Arc::new(state), rpc_url)).with_graceful_shutdown(async move {
+        cancellation_token.cancelled().await;
+    }).await?;
 
     Ok(())
 }
@@ -141,11 +137,11 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
         .route(ALL_HISTORICAL_VOLUME_PATH, get(all_historical_volume))
         .route(
             GET_HISTORICAL_VOLUME_BY_BALANCE_MANAGER_ID_WITH_INTERVAL,
-            get(get_historical_volume_by_balance_manager_id_with_interval),
+            get(get_historical_volume_by_balance_manager_id_with_interval)
         )
         .route(
             GET_HISTORICAL_VOLUME_BY_BALANCE_MANAGER_ID,
-            get(get_historical_volume_by_balance_manager_id),
+            get(get_historical_volume_by_balance_manager_id)
         )
         .route(GET_NET_DEPOSITS, get(get_net_deposits))
         .route(TICKER_PATH, get(ticker))
@@ -153,6 +149,7 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
         .route(TRADE_COUNT_PATH, get(trade_count))
         .route(ORDER_UPDATES_PATH, get(order_updates))
         .route(ASSETS_PATH, get(assets))
+        .route(OHLCV_PATH, get(get_ohlcv))
         .with_state(state.clone());
 
     let rpc_routes = Router::new()
@@ -161,10 +158,7 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
         .route(SUMMARY_PATH, get(summary))
         .with_state((state.clone(), rpc_url));
 
-    db_routes
-        .merge(rpc_routes)
-        .layer(cors)
-        .layer(from_fn_with_state(state, track_metrics))
+    db_routes.merge(rpc_routes).layer(cors).layer(from_fn_with_state(state, track_metrics))
 }
 
 impl axum::response::IntoResponse for DeepBookError {
@@ -173,15 +167,11 @@ impl axum::response::IntoResponse for DeepBookError {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Something went wrong: {:?}", self),
-        )
-            .into_response()
+        ).into_response()
     }
 }
 
-impl<E> From<E> for DeepBookError
-where
-    E: Into<anyhow::Error>,
-{
+impl<E> From<E> for DeepBookError where E: Into<anyhow::Error> {
     fn from(err: E) -> Self {
         Self::InternalError(err.into().to_string())
     }
@@ -199,7 +189,7 @@ async fn get_pools(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Pools>
 async fn historical_volume(
     Path(pool_names): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<Json<HashMap<String, u64>>, DeepBookError> {
     // Fetch all pools to map names to IDs
     let pools = state.reader.get_pools().await?;
@@ -215,9 +205,7 @@ async fn historical_volume(
         .collect();
 
     if pool_ids.is_empty() {
-        return Err(DeepBookError::InternalError(
-            "No valid pool names provided".to_string(),
-        ));
+        return Err(DeepBookError::InternalError("No valid pool names provided".to_string()));
     }
 
     // Parse start_time and end_time from query parameters (in seconds) and convert to milliseconds
@@ -230,18 +218,21 @@ async fn historical_volume(
     let volume_in_base = params.volume_in_base();
 
     // Query the database for the historical volume
-    let results = state
-        .reader
-        .get_historical_volume(start_time, end_time, &pool_ids, volume_in_base)
-        .await?;
+    let results = state.reader.get_historical_volume(
+        start_time,
+        end_time,
+        &pool_ids,
+        volume_in_base
+    ).await?;
 
     // Aggregate volume by pool ID and map back to pool names
     let mut volume_by_pool = HashMap::new();
     for (pool_id, volume) in results {
-        if let Some(pool_name) = pool_name_to_id
-            .iter()
-            .find(|(_, id)| **id == pool_id)
-            .map(|(name, _)| name)
+        if
+            let Some(pool_name) = pool_name_to_id
+                .iter()
+                .find(|(_, id)| **id == pool_id)
+                .map(|(name, _)| name)
         {
             *volume_by_pool.entry(pool_name.clone()).or_insert(0) += volume as u64;
         }
@@ -253,7 +244,7 @@ async fn historical_volume(
 /// Get all historical volume for all pools
 async fn all_historical_volume(
     Query(params): Query<HashMap<String, String>>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<Json<HashMap<String, u64>>, DeepBookError> {
     let pools = state.reader.get_pools().await?;
 
@@ -269,7 +260,7 @@ async fn all_historical_volume(
 async fn get_historical_volume_by_balance_manager_id(
     Path((pool_names, balance_manager_id)): Path<(String, String)>,
     Query(params): Query<HashMap<String, String>>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<Json<HashMap<String, Vec<i64>>>, DeepBookError> {
     let pools = state.reader.get_pools().await?;
     let pool_name_to_id = pools
@@ -283,9 +274,7 @@ async fn get_historical_volume_by_balance_manager_id(
         .collect();
 
     if pool_ids.is_empty() {
-        return Err(DeepBookError::InternalError(
-            "No valid pool names provided".to_string(),
-        ));
+        return Err(DeepBookError::InternalError("No valid pool names provided".to_string()));
     }
 
     // Parse start_time and end_time
@@ -296,27 +285,23 @@ async fn get_historical_volume_by_balance_manager_id(
 
     let volume_in_base = params.volume_in_base();
 
-    let results = state
-        .reader
-        .get_order_fill_summary(
-            start_time,
-            end_time,
-            &pool_ids,
-            &balance_manager_id,
-            volume_in_base,
-        )
-        .await?;
+    let results = state.reader.get_order_fill_summary(
+        start_time,
+        end_time,
+        &pool_ids,
+        &balance_manager_id,
+        volume_in_base
+    ).await?;
 
     let mut volume_by_pool: HashMap<String, Vec<i64>> = HashMap::new();
     for order_fill in results {
-        if let Some(pool_name) = pool_name_to_id
-            .iter()
-            .find(|(_, id)| **id == order_fill.pool_id)
-            .map(|(name, _)| name)
+        if
+            let Some(pool_name) = pool_name_to_id
+                .iter()
+                .find(|(_, id)| **id == order_fill.pool_id)
+                .map(|(name, _)| name)
         {
-            let entry = volume_by_pool
-                .entry(pool_name.clone())
-                .or_insert(vec![0, 0]);
+            let entry = volume_by_pool.entry(pool_name.clone()).or_insert(vec![0, 0]);
             if order_fill.maker_balance_manager_id == balance_manager_id {
                 entry[0] += order_fill.quantity;
             }
@@ -332,7 +317,7 @@ async fn get_historical_volume_by_balance_manager_id(
 async fn get_historical_volume_by_balance_manager_id_with_interval(
     Path((pool_names, balance_manager_id)): Path<(String, String)>,
     Query(params): Query<HashMap<String, String>>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<Json<HashMap<String, HashMap<String, Vec<i64>>>>, DeepBookError> {
     let pools = state.reader.get_pools().await?;
     let pool_name_to_id: HashMap<String, String> = pools
@@ -346,9 +331,7 @@ async fn get_historical_volume_by_balance_manager_id_with_interval(
         .collect::<Vec<_>>();
 
     if pool_ids.is_empty() {
-        return Err(DeepBookError::InternalError(
-            "No valid pool names provided".to_string(),
-        ));
+        return Err(DeepBookError::InternalError("No valid pool names provided".to_string()));
     }
 
     // Parse interval
@@ -358,9 +341,7 @@ async fn get_historical_volume_by_balance_manager_id_with_interval(
         .unwrap_or(3600); // Default interval: 1 hour
 
     if interval <= 0 {
-        return Err(DeepBookError::InternalError(
-            "Interval must be greater than 0".to_string(),
-        ));
+        return Err(DeepBookError::InternalError("Interval must be greater than 0".to_string()));
     }
 
     let interval_ms = interval * 1000;
@@ -379,27 +360,23 @@ async fn get_historical_volume_by_balance_manager_id_with_interval(
 
         let volume_in_base = params.volume_in_base();
 
-        let results = state
-            .reader
-            .get_order_fill_summary(
-                start_time,
-                end_time,
-                &pool_ids,
-                &balance_manager_id,
-                volume_in_base,
-            )
-            .await?;
+        let results = state.reader.get_order_fill_summary(
+            start_time,
+            end_time,
+            &pool_ids,
+            &balance_manager_id,
+            volume_in_base
+        ).await?;
 
         let mut volume_by_pool: HashMap<String, Vec<i64>> = HashMap::new();
         for order_fill in results {
-            if let Some(pool_name) = pool_name_to_id
-                .iter()
-                .find(|(_, id)| **id == order_fill.pool_id)
-                .map(|(name, _)| name)
+            if
+                let Some(pool_name) = pool_name_to_id
+                    .iter()
+                    .find(|(_, id)| **id == order_fill.pool_id)
+                    .map(|(name, _)| name)
             {
-                let entry = volume_by_pool
-                    .entry(pool_name.clone())
-                    .or_insert(vec![0, 0]);
+                let entry = volume_by_pool.entry(pool_name.clone()).or_insert(vec![0, 0]);
                 if order_fill.maker_balance_manager_id == balance_manager_id {
                     entry[0] += order_fill.quantity;
                 }
@@ -411,7 +388,7 @@ async fn get_historical_volume_by_balance_manager_id_with_interval(
 
         metrics_by_interval.insert(
             format!("[{}, {}]", current_start / 1000, current_end / 1000),
-            volume_by_pool,
+            volume_by_pool
         );
 
         current_start = current_end;
@@ -422,7 +399,7 @@ async fn get_historical_volume_by_balance_manager_id_with_interval(
 
 async fn ticker(
     Query(params): Query<HashMap<String, String>>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<Json<HashMap<String, HashMap<String, Value>>>, DeepBookError> {
     // Fetch base and quote historical volumes
     let base_volumes = fetch_historical_volume(&params, true, &state).await?;
@@ -441,7 +418,7 @@ async fn ticker(
         .as_millis() as i64;
 
     // Calculate the start time for 24 hours ago
-    let start_time = end_time - (24 * 60 * 60 * 1000);
+    let start_time = end_time - 24 * 60 * 60 * 1000;
 
     // Fetch last prices for all pools in a single query. Only trades in the last 24 hours will count.
     let query = schema::order_fills::table
@@ -465,10 +442,11 @@ async fn ticker(
         let last_price = last_price_map.get(pool_id).copied();
 
         // Conversion factors based on decimals
-        let base_factor = 10u64.pow(pool.base_asset_decimals as u32);
-        let quote_factor = 10u64.pow(pool.quote_asset_decimals as u32);
-        let price_factor =
-            10u64.pow((9 - pool.base_asset_decimals + pool.quote_asset_decimals) as u32);
+        let base_factor = (10u64).pow(pool.base_asset_decimals as u32);
+        let quote_factor = (10u64).pow(pool.quote_asset_decimals as u32);
+        let price_factor = (10u64).pow(
+            (9 - pool.base_asset_decimals + pool.quote_asset_decimals) as u32
+        );
 
         response.insert(
             pool_name.clone(),
@@ -477,20 +455,20 @@ async fn ticker(
                     "last_price".to_string(),
                     Value::from(
                         last_price
-                            .map(|price| price as f64 / price_factor as f64)
-                            .unwrap_or(0.0),
+                            .map(|price| (price as f64) / (price_factor as f64))
+                            .unwrap_or(0.0)
                     ),
                 ),
                 (
                     "base_volume".to_string(),
-                    Value::from(base_volume as f64 / base_factor as f64),
+                    Value::from((base_volume as f64) / (base_factor as f64)),
                 ),
                 (
                     "quote_volume".to_string(),
-                    Value::from(quote_volume as f64 / quote_factor as f64),
+                    Value::from((quote_volume as f64) / (quote_factor as f64)),
                 ),
                 ("isFrozen".to_string(), Value::from(0)), // Fixed to 0 because all pools in pools table are active
-            ]),
+            ])
         );
     }
 
@@ -500,20 +478,21 @@ async fn ticker(
 async fn fetch_historical_volume(
     params: &HashMap<String, String>,
     volume_in_base: bool,
-    state: &Arc<AppState>,
+    state: &Arc<AppState>
 ) -> Result<HashMap<String, u64>, DeepBookError> {
     let mut params_with_volume = params.clone();
     params_with_volume.insert("volume_in_base".to_string(), volume_in_base.to_string());
 
-    all_historical_volume(Query(params_with_volume), State(state.clone()))
-        .await
-        .map(|Json(volumes)| volumes)
+    all_historical_volume(Query(params_with_volume), State(state.clone())).await.map(
+        |Json(volumes)| volumes
+    )
 }
 
 #[allow(clippy::get_first)]
-async fn summary(
-    State((state, rpc_url)): State<(Arc<AppState>, Url)>,
-) -> Result<Json<Vec<HashMap<String, Value>>>, DeepBookError> {
+async fn summary(State((state, rpc_url)): State<(Arc<AppState>, Url)>) -> Result<
+    Json<Vec<HashMap<String, Value>>>,
+    DeepBookError
+> {
     // Fetch pools metadata first since it's required for other functions
     let pools = state.reader.get_pools().await?;
     let pool_metadata: HashMap<String, (String, (i16, i16))> = pools
@@ -521,10 +500,7 @@ async fn summary(
         .map(|pool| {
             (
                 pool.pool_name.clone(),
-                (
-                    pool.pool_id.clone(),
-                    (pool.base_asset_decimals, pool.quote_asset_decimals),
-                ),
+                (pool.pool_id.clone(), (pool.base_asset_decimals, pool.quote_asset_decimals)),
             )
         })
         .collect();
@@ -554,7 +530,7 @@ async fn summary(
             orderbook(
                 Path(pool_name_clone),
                 Query(HashMap::from([("level".to_string(), "1".to_string())])),
-                State((state.clone(), rpc_url.clone())),
+                State((state.clone(), rpc_url.clone()))
             )
         })
         .collect();
@@ -586,8 +562,10 @@ async fn summary(
             let price_change_percent = price_change_map.get(pool_name).copied().unwrap_or(0.0);
 
             // Fetch the highest and lowest prices in the last 24 hours
-            let (highest_price, lowest_price) =
-                high_low_map.get(pool_id).copied().unwrap_or((0.0, 0.0));
+            let (highest_price, lowest_price) = high_low_map
+                .get(pool_id)
+                .copied()
+                .unwrap_or((0.0, 0.0));
 
             // Process the parallel orderbook result
             let orderbook_data = orderbook_result.ok().map(|Json(data)| data);
@@ -613,10 +591,7 @@ async fn summary(
                 .unwrap_or(0.0);
 
             let mut summary_data = HashMap::new();
-            summary_data.insert(
-                "trading_pairs".to_string(),
-                Value::String(pool_name.clone()),
-            );
+            summary_data.insert("trading_pairs".to_string(), Value::String(pool_name.clone()));
             let parts: Vec<&str> = pool_name.split('_').collect();
             let base_currency = parts.get(0).unwrap_or(&"Unknown").to_string();
             let quote_currency = parts.get(1).unwrap_or(&"Unknown").to_string();
@@ -628,7 +603,7 @@ async fn summary(
             summary_data.insert("quote_volume".to_string(), Value::from(quote_volume));
             summary_data.insert(
                 "price_change_percent_24h".to_string(),
-                Value::from(price_change_percent),
+                Value::from(price_change_percent)
             );
             summary_data.insert("highest_price_24h".to_string(), Value::from(highest_price));
             summary_data.insert("lowest_price_24h".to_string(), Value::from(lowest_price));
@@ -644,7 +619,7 @@ async fn summary(
 
 async fn high_low_prices_24h(
     pool_decimals: &HashMap<String, (i16, i16)>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<HashMap<String, (f64, f64)>, DeepBookError> {
     // Get the current timestamp in milliseconds
     let end_time = SystemTime::now()
@@ -653,7 +628,7 @@ async fn high_low_prices_24h(
         .as_millis() as i64;
 
     // Calculate the start time for 24 hours ago
-    let start_time = end_time - (24 * 60 * 60 * 1000);
+    let start_time = end_time - 24 * 60 * 60 * 1000;
 
     // Query for trades within the last 24 hours for all pools
     let query = schema::order_fills::table
@@ -671,10 +646,10 @@ async fn high_low_prices_24h(
 
     for (pool_id, max_price_opt, min_price_opt) in results {
         if let Some((base_decimals, quote_decimals)) = pool_decimals.get(&pool_id) {
-            let scaling_factor = 10f64.powi((9 - base_decimals + quote_decimals) as i32);
+            let scaling_factor = (10f64).powi((9 - base_decimals + quote_decimals) as i32);
 
-            let max_price_f64 = max_price_opt.unwrap_or(0) as f64 / scaling_factor;
-            let min_price_f64 = min_price_opt.unwrap_or(0) as f64 / scaling_factor;
+            let max_price_f64 = (max_price_opt.unwrap_or(0) as f64) / scaling_factor;
+            let min_price_f64 = (min_price_opt.unwrap_or(0) as f64) / scaling_factor;
 
             price_map.insert(pool_id, (max_price_f64, min_price_f64));
         }
@@ -685,7 +660,7 @@ async fn high_low_prices_24h(
 
 async fn price_change_24h(
     pool_metadata: &HashMap<String, (String, (i16, i16))>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<HashMap<String, f64>, DeepBookError> {
     // Calculate the timestamp for 24 hours ago
     let now = SystemTime::now()
@@ -693,34 +668,36 @@ async fn price_change_24h(
         .map_err(|_| DeepBookError::InternalError("System time error".to_string()))?
         .as_millis() as i64;
 
-    let timestamp_24h_ago = now - (24 * 60 * 60 * 1000); // 24 hours in milliseconds
-    let timestamp_48h_ago = now - (48 * 60 * 60 * 1000); // 48 hours in milliseconds
+    let timestamp_24h_ago = now - 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+    let timestamp_48h_ago = now - 48 * 60 * 60 * 1000; // 48 hours in milliseconds
 
     let mut response = HashMap::new();
 
     for (pool_name, (pool_id, (base_decimals, quote_decimals))) in pool_metadata.iter() {
         // Get the latest price <= 24 hours ago. Only trades until 48 hours ago will count.
-        let earliest_trade_24h = state
-            .reader
-            .get_price(timestamp_48h_ago, timestamp_24h_ago, pool_id)
-            .await;
+        let earliest_trade_24h = state.reader.get_price(
+            timestamp_48h_ago,
+            timestamp_24h_ago,
+            pool_id
+        ).await;
         // Get the most recent price. Only trades until 24 hours ago will count.
-        let most_recent_trade = state
-            .reader
-            .get_price(timestamp_24h_ago, now, pool_id)
-            .await;
+        let most_recent_trade = state.reader.get_price(timestamp_24h_ago, now, pool_id).await;
 
-        if let (Ok(earliest_price), Ok(most_recent_price)) = (earliest_trade_24h, most_recent_trade)
+        if
+            let (Ok(earliest_price), Ok(most_recent_price)) = (
+                earliest_trade_24h,
+                most_recent_trade,
+            )
         {
-            let price_factor = 10u64.pow((9 - base_decimals + quote_decimals) as u32);
+            let price_factor = (10u64).pow((9 - base_decimals + quote_decimals) as u32);
 
             // Scale the prices
-            let earliest_price_scaled = earliest_price as f64 / price_factor as f64;
-            let most_recent_price_scaled = most_recent_price as f64 / price_factor as f64;
+            let earliest_price_scaled = (earliest_price as f64) / (price_factor as f64);
+            let most_recent_price_scaled = (most_recent_price as f64) / (price_factor as f64);
 
             // Calculate price change percentage
             let price_change_percent =
-                ((most_recent_price_scaled / earliest_price_scaled) - 1.0) * 100.0;
+                (most_recent_price_scaled / earliest_price_scaled - 1.0) * 100.0;
 
             response.insert(pool_name.clone(), price_change_percent);
         } else {
@@ -735,11 +712,12 @@ async fn price_change_24h(
 async fn order_updates(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<Json<Vec<HashMap<String, Value>>>, DeepBookError> {
     // Fetch pool data with proper error handling
-    let (pool_id, base_decimals, quote_decimals) =
-        state.reader.get_pool_decimals(&pool_name).await?;
+    let (pool_id, base_decimals, quote_decimals) = state.reader.get_pool_decimals(
+        &pool_name
+    ).await?;
     let base_decimals = base_decimals as u8;
     let quote_decimals = quote_decimals as u8;
 
@@ -754,20 +732,17 @@ async fn order_updates(
     let balance_manager_filter = params.get("balance_manager_id").cloned();
     let status_filter = params.get("status").cloned();
 
-    let trades = state
-        .reader
-        .get_order_updates(
-            pool_id,
-            start_time,
-            end_time,
-            limit,
-            balance_manager_filter,
-            status_filter,
-        )
-        .await?;
+    let trades = state.reader.get_order_updates(
+        pool_id,
+        start_time,
+        end_time,
+        limit,
+        balance_manager_filter,
+        status_filter
+    ).await?;
 
-    let base_factor = 10u64.pow(base_decimals as u32);
-    let price_factor = 10u64.pow((9 - base_decimals + quote_decimals) as u32);
+    let base_factor = (10u64).pow(base_decimals as u32);
+    let price_factor = (10u64).pow((9 - base_decimals + quote_decimals) as u32);
 
     let trade_data: Vec<HashMap<String, Value>> = trades
         .into_iter()
@@ -786,31 +761,25 @@ async fn order_updates(
                 let trade_type = if is_bid { "buy" } else { "sell" };
                 HashMap::from([
                     ("order_id".to_string(), Value::from(order_id)),
-                    (
-                        "price".to_string(),
-                        Value::from(price as f64 / price_factor as f64),
-                    ),
+                    ("price".to_string(), Value::from((price as f64) / (price_factor as f64))),
                     (
                         "original_quantity".to_string(),
-                        Value::from(original_quantity as f64 / base_factor as f64),
+                        Value::from((original_quantity as f64) / (base_factor as f64)),
                     ),
                     (
                         "remaining_quantity".to_string(),
-                        Value::from(quantity as f64 / base_factor as f64),
+                        Value::from((quantity as f64) / (base_factor as f64)),
                     ),
                     (
                         "filled_quantity".to_string(),
-                        Value::from(filled_quantity as f64 / base_factor as f64),
+                        Value::from((filled_quantity as f64) / (base_factor as f64)),
                     ),
                     ("timestamp".to_string(), Value::from(timestamp as u64)),
                     ("type".to_string(), Value::from(trade_type)),
-                    (
-                        "balance_manager_id".to_string(),
-                        Value::from(balance_manager_id),
-                    ),
+                    ("balance_manager_id".to_string(), Value::from(balance_manager_id)),
                     ("status".to_string(), Value::from(status)),
                 ])
-            },
+            }
         )
         .collect();
 
@@ -820,16 +789,15 @@ async fn order_updates(
 async fn trades(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<Json<Vec<HashMap<String, Value>>>, DeepBookError> {
     // Fetch all pools to map names to IDs and decimals
-    let (pool_id, base_decimals, quote_decimals) =
-        state.reader.get_pool_decimals(&pool_name).await?;
+    let (pool_id, base_decimals, quote_decimals) = state.reader.get_pool_decimals(
+        &pool_name
+    ).await?;
     // Parse start_time and end_time
     let end_time = params.end_time();
-    let start_time = params
-        .start_time()
-        .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
+    let start_time = params.start_time().unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
 
     // Parse limit (default to 1 if not provided)
     let limit = params.limit();
@@ -841,23 +809,20 @@ async fn trades(
     let base_decimals = base_decimals as u8;
     let quote_decimals = quote_decimals as u8;
 
-    let trades = state
-        .reader
-        .get_orders(
-            pool_name,
-            pool_id,
-            start_time,
-            end_time,
-            limit,
-            maker_balance_manager_filter,
-            taker_balance_manager_filter,
-        )
-        .await?;
+    let trades = state.reader.get_orders(
+        pool_name,
+        pool_id,
+        start_time,
+        end_time,
+        limit,
+        maker_balance_manager_filter,
+        taker_balance_manager_filter
+    ).await?;
 
     // Conversion factors for decimals
-    let base_factor = 10u64.pow(base_decimals as u32);
-    let quote_factor = 10u64.pow(quote_decimals as u32);
-    let price_factor = 10u64.pow((9 - base_decimals + quote_decimals) as u32);
+    let base_factor = (10u64).pow(base_decimals as u32);
+    let quote_factor = (10u64).pow(quote_decimals as u32);
+    let price_factor = (10u64).pow((9 - base_decimals + quote_decimals) as u32);
 
     // Map trades to JSON format
     let trade_data = trades
@@ -881,30 +846,21 @@ async fn trades(
                     ("trade_id".to_string(), Value::from(trade_id.to_string())),
                     ("maker_order_id".to_string(), Value::from(maker_order_id)),
                     ("taker_order_id".to_string(), Value::from(taker_order_id)),
-                    (
-                        "maker_balance_manager_id".to_string(),
-                        Value::from(maker_balance_manager_id),
-                    ),
-                    (
-                        "taker_balance_manager_id".to_string(),
-                        Value::from(taker_balance_manager_id),
-                    ),
-                    (
-                        "price".to_string(),
-                        Value::from(price as f64 / price_factor as f64),
-                    ),
+                    ("maker_balance_manager_id".to_string(), Value::from(maker_balance_manager_id)),
+                    ("taker_balance_manager_id".to_string(), Value::from(taker_balance_manager_id)),
+                    ("price".to_string(), Value::from((price as f64) / (price_factor as f64))),
                     (
                         "base_volume".to_string(),
-                        Value::from(base_quantity as f64 / base_factor as f64),
+                        Value::from((base_quantity as f64) / (base_factor as f64)),
                     ),
                     (
                         "quote_volume".to_string(),
-                        Value::from(quote_quantity as f64 / quote_factor as f64),
+                        Value::from((quote_quantity as f64) / (quote_factor as f64)),
                     ),
                     ("timestamp".to_string(), Value::from(timestamp as u64)),
                     ("type".to_string(), Value::from(trade_type)),
                 ])
-            },
+            }
         )
         .collect();
 
@@ -913,7 +869,7 @@ async fn trades(
 
 async fn trade_count(
     Query(params): Query<HashMap<String, String>>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<Json<i64>, DeepBookError> {
     // Parse start_time and end_time
     let end_time = params.end_time();
@@ -946,9 +902,10 @@ fn calculate_trade_id(maker_id: &str, taker_id: &str) -> Result<u128, DeepBookEr
     Ok(maker_id + taker_id)
 }
 
-pub async fn assets(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<HashMap<String, HashMap<String, Value>>>, DeepBookError> {
+pub async fn assets(State(state): State<Arc<AppState>>) -> Result<
+    Json<HashMap<String, HashMap<String, Value>>>,
+    DeepBookError
+> {
     let query = schema::assets::table.select((
         schema::assets::symbol,
         schema::assets::name,
@@ -956,8 +913,9 @@ pub async fn assets(
         schema::assets::package_address_url,
         schema::assets::package_id,
     ));
-    let assets: Vec<(String, String, Option<i32>, Option<String>, Option<String>)> =
-        state.reader.results(query).await.map_err(|err| {
+    let assets: Vec<(String, String, Option<i32>, Option<String>, Option<String>)> = state.reader
+        .results(query).await
+        .map_err(|err| {
             DeepBookError::InternalError(format!("Failed to query assets: {}", err))
         })?;
     let mut response = HashMap::new();
@@ -965,16 +923,13 @@ pub async fn assets(
     for (symbol, name, ucid, package_address_url, package_id) in assets {
         let mut asset_info = HashMap::new();
         asset_info.insert("name".to_string(), Value::String(name));
-        asset_info.insert(
-            "can_withdraw".to_string(),
-            Value::String("true".to_string()),
-        );
+        asset_info.insert("can_withdraw".to_string(), Value::String("true".to_string()));
         asset_info.insert("can_deposit".to_string(), Value::String("true".to_string()));
 
         if let Some(ucid) = ucid {
             asset_info.insert(
                 "unified_cryptoasset_id".to_string(),
-                Value::String(ucid.to_string()),
+                Value::String(ucid.to_string())
             );
         }
         if let Some(addresses) = package_address_url {
@@ -995,7 +950,7 @@ pub async fn assets(
 async fn orderbook(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-    State((state, rpc_url)): State<(Arc<AppState>, Url)>,
+    State((state, rpc_url)): State<(Arc<AppState>, Url)>
 ) -> Result<Json<HashMap<String, Value>>, DeepBookError> {
     let depth = params
         .get("depth")
@@ -1008,10 +963,11 @@ async fn orderbook(
 
     if let Some(depth) = depth {
         if depth == 1 {
-            return Err(DeepBookError::InternalError(
-                "Depth cannot be 1. Use a value greater than 1 or 0 for the entire orderbook"
-                    .to_string(),
-            ));
+            return Err(
+                DeepBookError::InternalError(
+                    "Depth cannot be 1. Use a value greater than 1 or 0 for the entire orderbook".to_string()
+                )
+            );
         }
     }
 
@@ -1025,18 +981,16 @@ async fn orderbook(
 
     if let Some(level) = level {
         if !(1..=2).contains(&level) {
-            return Err(DeepBookError::InternalError(
-                "Level must be 1 or 2".to_string(),
-            ));
+            return Err(DeepBookError::InternalError("Level must be 1 or 2".to_string()));
         }
     }
 
     let ticks_from_mid = match (depth, level) {
         (Some(_), Some(1)) => 1u64, // Depth + Level 1 → Best bid and ask
         (Some(depth), Some(2)) | (Some(depth), None) => depth / 2, // Depth + Level 2 → Use depth
-        (None, Some(1)) => 1u64,    // Only Level 1 → Best bid and ask
+        (None, Some(1)) => 1u64, // Only Level 1 → Best bid and ask
         (None, Some(2)) | (None, None) => 100u64, // Level 2 or default → 100 ticks
-        _ => 100u64,                // Fallback to default
+        _ => 100u64, // Fallback to default
     };
 
     // Fetch the pool data from the `pools` table
@@ -1061,43 +1015,43 @@ async fn orderbook(
 
     let pool_object: SuiObjectResponse = sui_client
         .read_api()
-        .get_object_with_options(pool_address, SuiObjectDataOptions::full_content())
-        .await?;
-    let pool_data: &SuiObjectData =
-        pool_object
-            .data
-            .as_ref()
-            .ok_or(DeepBookError::InternalError(format!(
-                "Missing data in pool object response for '{}'",
-                pool_name
-            )))?;
+        .get_object_with_options(pool_address, SuiObjectDataOptions::full_content()).await?;
+    let pool_data: &SuiObjectData = pool_object.data
+        .as_ref()
+        .ok_or(
+            DeepBookError::InternalError(
+                format!("Missing data in pool object response for '{}'", pool_name)
+            )
+        )?;
     let pool_object_ref: ObjectRef = (pool_data.object_id, pool_data.version, pool_data.digest);
 
     let pool_input = CallArg::Object(ObjectArg::ImmOrOwnedObject(pool_object_ref));
     ptb.input(pool_input)?;
 
-    let input_argument = CallArg::Pure(bcs::to_bytes(&ticks_from_mid).map_err(|_| {
-        DeepBookError::InternalError("Failed to serialize ticks_from_mid".to_string())
-    })?);
+    let input_argument = CallArg::Pure(
+        bcs
+            ::to_bytes(&ticks_from_mid)
+            .map_err(|_| {
+                DeepBookError::InternalError("Failed to serialize ticks_from_mid".to_string())
+            })?
+    );
     ptb.input(input_argument)?;
 
     let sui_clock_object_id = ObjectID::from_hex_literal(
-        "0x0000000000000000000000000000000000000000000000000000000000000006",
+        "0x0000000000000000000000000000000000000000000000000000000000000006"
     )?;
     let sui_clock_object: SuiObjectResponse = sui_client
         .read_api()
-        .get_object_with_options(sui_clock_object_id, SuiObjectDataOptions::full_content())
-        .await?;
-    let clock_data: &SuiObjectData =
-        sui_clock_object
-            .data
-            .as_ref()
-            .ok_or(DeepBookError::InternalError(
-                "Missing data in clock object response".to_string(),
-            ))?;
+        .get_object_with_options(sui_clock_object_id, SuiObjectDataOptions::full_content()).await?;
+    let clock_data: &SuiObjectData = sui_clock_object.data
+        .as_ref()
+        .ok_or(DeepBookError::InternalError("Missing data in clock object response".to_string()))?;
 
-    let sui_clock_object_ref: ObjectRef =
-        (clock_data.object_id, clock_data.version, clock_data.digest);
+    let sui_clock_object_ref: ObjectRef = (
+        clock_data.object_id,
+        clock_data.version,
+        clock_data.digest,
+    );
 
     let clock_input = CallArg::Object(ObjectArg::ImmOrOwnedObject(sui_clock_object_ref));
     ptb.input(clock_input)?;
@@ -1105,87 +1059,75 @@ async fn orderbook(
     let base_coin_type = parse_type_input(&base_asset_id)?;
     let quote_coin_type = parse_type_input(&quote_asset_id)?;
 
-    let package = ObjectID::from_hex_literal(DEEPBOOK_PACKAGE_ID)
-        .map_err(|e| DeepBookError::InternalError(format!("Invalid pool ID: {}", e)))?;
+    let package = ObjectID::from_hex_literal(DEEPBOOK_PACKAGE_ID).map_err(|e|
+        DeepBookError::InternalError(format!("Invalid pool ID: {}", e))
+    )?;
     let module = LEVEL2_MODULE.to_string();
     let function = LEVEL2_FUNCTION.to_string();
 
-    ptb.command(Command::MoveCall(Box::new(ProgrammableMoveCall {
-        package,
-        module,
-        function,
-        type_arguments: vec![base_coin_type, quote_coin_type],
-        arguments: vec![Argument::Input(0), Argument::Input(1), Argument::Input(2)],
-    })));
+    ptb.command(
+        Command::MoveCall(
+            Box::new(ProgrammableMoveCall {
+                package,
+                module,
+                function,
+                type_arguments: vec![base_coin_type, quote_coin_type],
+                arguments: vec![Argument::Input(0), Argument::Input(1), Argument::Input(2)],
+            })
+        )
+    );
 
     let builder = ptb.finish();
     let tx = TransactionKind::ProgrammableTransaction(builder);
 
     let result = sui_client
         .read_api()
-        .dev_inspect_transaction_block(SuiAddress::default(), tx, None, None, None)
-        .await?;
+        .dev_inspect_transaction_block(SuiAddress::default(), tx, None, None, None).await?;
 
-    let mut binding = result.results.ok_or(DeepBookError::InternalError(
-        "No results from dev_inspect_transaction_block".to_string(),
-    ))?;
+    let mut binding = result.results.ok_or(
+        DeepBookError::InternalError("No results from dev_inspect_transaction_block".to_string())
+    )?;
     let bid_prices = &binding
         .first_mut()
-        .ok_or(DeepBookError::InternalError(
-            "No return values for bid prices".to_string(),
-        ))?
-        .return_values
-        .first_mut()
-        .ok_or(DeepBookError::InternalError(
-            "No bid price data found".to_string(),
-        ))?
-        .0;
-    let bid_parsed_prices: Vec<u64> = bcs::from_bytes(bid_prices).map_err(|_| {
-        DeepBookError::InternalError("Failed to deserialize bid prices".to_string())
-    })?;
+        .ok_or(DeepBookError::InternalError("No return values for bid prices".to_string()))?
+        .return_values.first_mut()
+        .ok_or(DeepBookError::InternalError("No bid price data found".to_string()))?.0;
+    let bid_parsed_prices: Vec<u64> = bcs
+        ::from_bytes(bid_prices)
+        .map_err(|_| {
+            DeepBookError::InternalError("Failed to deserialize bid prices".to_string())
+        })?;
     let bid_quantities = &binding
         .first_mut()
-        .ok_or(DeepBookError::InternalError(
-            "No return values for bid quantities".to_string(),
-        ))?
-        .return_values
-        .get(1)
-        .ok_or(DeepBookError::InternalError(
-            "No bid quantity data found".to_string(),
-        ))?
-        .0;
-    let bid_parsed_quantities: Vec<u64> = bcs::from_bytes(bid_quantities).map_err(|_| {
-        DeepBookError::InternalError("Failed to deserialize bid quantities".to_string())
-    })?;
+        .ok_or(DeepBookError::InternalError("No return values for bid quantities".to_string()))?
+        .return_values.get(1)
+        .ok_or(DeepBookError::InternalError("No bid quantity data found".to_string()))?.0;
+    let bid_parsed_quantities: Vec<u64> = bcs
+        ::from_bytes(bid_quantities)
+        .map_err(|_| {
+            DeepBookError::InternalError("Failed to deserialize bid quantities".to_string())
+        })?;
 
     let ask_prices = &binding
         .first_mut()
-        .ok_or(DeepBookError::InternalError(
-            "No return values for ask prices".to_string(),
-        ))?
-        .return_values
-        .get(2)
-        .ok_or(DeepBookError::InternalError(
-            "No ask price data found".to_string(),
-        ))?
-        .0;
-    let ask_parsed_prices: Vec<u64> = bcs::from_bytes(ask_prices).map_err(|_| {
-        DeepBookError::InternalError("Failed to deserialize ask prices".to_string())
-    })?;
+        .ok_or(DeepBookError::InternalError("No return values for ask prices".to_string()))?
+        .return_values.get(2)
+        .ok_or(DeepBookError::InternalError("No ask price data found".to_string()))?.0;
+    let ask_parsed_prices: Vec<u64> = bcs
+        ::from_bytes(ask_prices)
+        .map_err(|_| {
+            DeepBookError::InternalError("Failed to deserialize ask prices".to_string())
+        })?;
     let ask_quantities = &binding
         .first_mut()
-        .ok_or(DeepBookError::InternalError(
-            "No return values for ask quantities".to_string(),
-        ))?
-        .return_values
-        .get(3)
-        .ok_or(DeepBookError::InternalError(
-            "No ask quantity data found".to_string(),
-        ))?
-        .0;
-    let ask_parsed_quantities: Vec<u64> = bcs::from_bytes(ask_quantities).map_err(|_| {
-        DeepBookError::InternalError("Failed to deserialize ask quantities".to_string())
-    })?;
+        .ok_or(DeepBookError::InternalError("No return values for ask quantities".to_string()))?
+        .return_values.get(3)
+        .ok_or(DeepBookError::InternalError("No ask quantity data found".to_string()))?.0;
+    let ask_parsed_quantities: Vec<u64> = bcs
+        ::from_bytes(ask_quantities)
+        .map_err(|_| {
+            DeepBookError::InternalError("Failed to deserialize ask quantities".to_string())
+        })?;
 
     let mut result = HashMap::new();
 
@@ -1200,12 +1142,14 @@ async fn orderbook(
         .zip(bid_parsed_quantities.into_iter())
         .take(ticks_from_mid as usize)
         .map(|(price, quantity)| {
-            let price_factor = 10u64.pow((9 - base_decimals + quote_decimals).into());
-            let quantity_factor = 10u64.pow((base_decimals).into());
-            Value::Array(vec![
-                Value::from((price as f64 / price_factor as f64).to_string()),
-                Value::from((quantity as f64 / quantity_factor as f64).to_string()),
-            ])
+            let price_factor = (10u64).pow((9 - base_decimals + quote_decimals).into());
+            let quantity_factor = (10u64).pow(base_decimals.into());
+            Value::Array(
+                vec![
+                    Value::from(((price as f64) / (price_factor as f64)).to_string()),
+                    Value::from(((quantity as f64) / (quantity_factor as f64)).to_string())
+                ]
+            )
         })
         .collect();
     result.insert("bids".to_string(), Value::Array(bids));
@@ -1215,12 +1159,14 @@ async fn orderbook(
         .zip(ask_parsed_quantities.into_iter())
         .take(ticks_from_mid as usize)
         .map(|(price, quantity)| {
-            let price_factor = 10u64.pow((9 - base_decimals + quote_decimals).into());
-            let quantity_factor = 10u64.pow((base_decimals).into());
-            Value::Array(vec![
-                Value::from((price as f64 / price_factor as f64).to_string()),
-                Value::from((quantity as f64 / quantity_factor as f64).to_string()),
-            ])
+            let price_factor = (10u64).pow((9 - base_decimals + quote_decimals).into());
+            let quantity_factor = (10u64).pow(base_decimals.into());
+            Value::Array(
+                vec![
+                    Value::from(((price as f64) / (price_factor as f64)).to_string()),
+                    Value::from(((quantity as f64) / (quantity_factor as f64)).to_string())
+                ]
+            )
         })
         .collect();
     result.insert("asks".to_string(), Value::Array(asks));
@@ -1229,9 +1175,10 @@ async fn orderbook(
 }
 
 /// DEEP total supply
-async fn deep_supply(
-    State((_, rpc_url)): State<(Arc<AppState>, Url)>,
-) -> Result<Json<u64>, DeepBookError> {
+async fn deep_supply(State((_, rpc_url)): State<(Arc<AppState>, Url)>) -> Result<
+    Json<u64>,
+    DeepBookError
+> {
     let sui_client = SuiClientBuilder::default().build(rpc_url.as_str()).await?;
     let mut ptb = ProgrammableTransactionBuilder::new();
 
@@ -1240,16 +1187,11 @@ async fn deep_supply(
         .read_api()
         .get_object_with_options(
             deep_treasury_object_id,
-            SuiObjectDataOptions::full_content(),
-        )
-        .await?;
-    let deep_treasury_data: &SuiObjectData =
-        deep_treasury_object
-            .data
-            .as_ref()
-            .ok_or(DeepBookError::InternalError(
-                "Incorrect Treasury ID".to_string(),
-            ))?;
+            SuiObjectDataOptions::full_content()
+        ).await?;
+    let deep_treasury_data: &SuiObjectData = deep_treasury_object.data
+        .as_ref()
+        .ok_or(DeepBookError::InternalError("Incorrect Treasury ID".to_string()))?;
 
     let deep_treasury_ref: ObjectRef = (
         deep_treasury_data.object_id,
@@ -1266,52 +1208,50 @@ async fn deep_supply(
     let module = DEEP_SUPPLY_MODULE.to_string();
     let function = DEEP_SUPPLY_FUNCTION.to_string();
 
-    ptb.command(Command::MoveCall(Box::new(ProgrammableMoveCall {
-        package,
-        module,
-        function,
-        type_arguments: vec![],
-        arguments: vec![Argument::Input(0)],
-    })));
+    ptb.command(
+        Command::MoveCall(
+            Box::new(ProgrammableMoveCall {
+                package,
+                module,
+                function,
+                type_arguments: vec![],
+                arguments: vec![Argument::Input(0)],
+            })
+        )
+    );
 
     let builder = ptb.finish();
     let tx = TransactionKind::ProgrammableTransaction(builder);
 
     let result = sui_client
         .read_api()
-        .dev_inspect_transaction_block(SuiAddress::default(), tx, None, None, None)
-        .await?;
+        .dev_inspect_transaction_block(SuiAddress::default(), tx, None, None, None).await?;
 
-    let mut binding = result.results.ok_or(DeepBookError::InternalError(
-        "No results from dev_inspect_transaction_block".to_string(),
-    ))?;
+    let mut binding = result.results.ok_or(
+        DeepBookError::InternalError("No results from dev_inspect_transaction_block".to_string())
+    )?;
 
     let total_supply = &binding
         .first_mut()
-        .ok_or(DeepBookError::InternalError(
-            "No return values for total supply".to_string(),
-        ))?
-        .return_values
-        .first_mut()
-        .ok_or(DeepBookError::InternalError(
-            "No total supply data found".to_string(),
-        ))?
-        .0;
+        .ok_or(DeepBookError::InternalError("No return values for total supply".to_string()))?
+        .return_values.first_mut()
+        .ok_or(DeepBookError::InternalError("No total supply data found".to_string()))?.0;
 
-    let total_supply_value: u64 = bcs::from_bytes(total_supply).map_err(|_| {
-        DeepBookError::InternalError("Failed to deserialize total supply".to_string())
-    })?;
+    let total_supply_value: u64 = bcs
+        ::from_bytes(total_supply)
+        .map_err(|_| {
+            DeepBookError::InternalError("Failed to deserialize total supply".to_string())
+        })?;
 
     Ok(Json(total_supply_value))
 }
 
 async fn get_net_deposits(
     Path((asset_ids, timestamp)): Path<(String, String)>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<Json<HashMap<String, i64>>, DeepBookError> {
     let mut query =
-      "SELECT asset, SUM(amount)::bigint AS amount, deposit FROM balances WHERE checkpoint_timestamp_ms < "
-          .to_string();
+        "SELECT asset, SUM(amount)::bigint AS amount, deposit FROM balances WHERE checkpoint_timestamp_ms < ".to_string();
     query.push_str(&timestamp);
     query.push_str("000 AND asset in (");
     for asset in asset_ids.split(",") {
@@ -1343,6 +1283,56 @@ async fn get_net_deposits(
     Ok(Json(net_deposits))
 }
 
+pub async fn get_ohlcv(
+    Path(pool_name): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<Arc<AppState>>
+) -> Result<Json<Vec<HashMap<String, Value>>>, DeepBookError> {
+    let pool_id = match state.reader.get_pool_id_by_name(&pool_name.as_str()).await {
+        Err(_) => {
+            return Err(DeepBookError::InternalError("No valid pool names provided".to_string()));
+        }
+        Ok(v) => v,
+    };
+    // Parse start_time and end_time from query parameters (in seconds) and convert to milliseconds
+    let end_time = params.end_time();
+    let start_time = params
+        .start_time() // Convert to milliseconds
+        .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
+
+    let start_time_date = DateTime::from_timestamp_millis(start_time).unwrap().naive_utc();
+    let end_time_date = DateTime::from_timestamp_millis(end_time).unwrap().naive_utc();
+
+    let result: Vec<OHLCV1min> = state.reader.results(
+        view::ohlcv_1min::table
+            .select(OHLCV1min::as_select())
+            .filter(view::ohlcv_1min::bucket.between(start_time_date, end_time_date))
+            .filter(view::ohlcv_1min::pool_id.eq(pool_id))
+    ).await?;
+
+    Ok(
+        Json(
+            result
+                .into_iter()
+                .map(|ohlc| {
+                    let vol_b = ohlc.volume_base.to_plain_string();
+                    let vol_q = ohlc.volume_quote.to_plain_string();
+
+                    HashMap::from([
+                        ("timestamp".to_string(), Value::from(ohlc.bucket.and_utc().timestamp())),
+                        ("open".to_string(), Value::from(ohlc.open)),
+                        ("high".to_string(), Value::from(ohlc.high)),
+                        ("low".to_string(), Value::from(ohlc.low)),
+                        ("close".to_string(), Value::from(ohlc.close)),
+                        ("volume_base".to_string(), Value::from(vol_b)),
+                        ("volume_quote".to_string(), Value::from(vol_q)),
+                    ])
+                })
+                .collect()
+        )
+    )
+}
+
 fn parse_type_input(type_str: &str) -> Result<TypeInput, DeepBookError> {
     let type_tag = TypeTag::from_str(type_str)?;
     Ok(TypeInput::from(type_tag))
@@ -1368,10 +1358,7 @@ impl ParameterUtil for HashMap<String, String> {
             .and_then(|v| v.parse::<i64>().ok())
             .map(|t| t * 1000) // Convert to milliseconds
             .unwrap_or_else(|| {
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis() as i64
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64
             })
     }
 
