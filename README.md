@@ -17,3 +17,8 @@ Returns Open, High, Low, Close, Volume. [example](https://api.sui.carmine.financ
 _/orderbook/&lt;pool_name&gt;_
 
 Returns current orders with the timestamp of the last update. [example](https://api.sui.carmine.finance/orderbook/TYPUS_SUI)
+
+
+_/order_fills/&lt;pool_name&gt;_?start_time=&lt;start_timestamp_in_secs&gt;&end_time=&lt;end_timestamp_in_secs&gt;_
+
+Returns order fills for given pool name within given time range. [example](https://api.sui.carmine.finance/order_fills/SUI_USDC?start_time=1750866244&end_time=1750886244)

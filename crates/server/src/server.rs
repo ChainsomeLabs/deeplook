@@ -5,7 +5,7 @@ use crate::error::DeepBookError;
 use axum::http::Method;
 use axum::{ extract::{ Path, Query, State }, http::StatusCode, routing::get, Json, Router };
 use chrono::{ DateTime };
-use deepbook_schema::models::{ BalancesSummary, OHLCV1min, Pools };
+use deepbook_schema::models::{ BalancesSummary, OHLCV1min, OrderFill, Pools };
 use deepbook_schema::*;
 use diesel::dsl::count_star;
 use diesel::dsl::{ max, min };
@@ -68,6 +68,7 @@ pub const DEEP_SUPPLY_MODULE: &str = "deep";
 pub const DEEP_SUPPLY_FUNCTION: &str = "total_supply";
 pub const DEEP_SUPPLY_PATH: &str = "/deep_supply";
 pub const OHLCV_PATH: &str = "/ohlcv/:pool_name";
+pub const ORDER_FILLS_PATH: &str = "/order_fills/:pool_name";
 
 #[derive(Clone)]
 pub struct AppState {
@@ -150,6 +151,7 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
         .route(ORDER_UPDATES_PATH, get(order_updates))
         .route(ASSETS_PATH, get(assets))
         .route(OHLCV_PATH, get(get_ohlcv))
+        .route(ORDER_FILLS_PATH, get(get_order_fills))
         .with_state(state.clone());
 
     let rpc_routes = Router::new()
@@ -1327,6 +1329,84 @@ pub async fn get_ohlcv(
                         ("volume_base".to_string(), Value::from(vol_b)),
                         ("volume_quote".to_string(), Value::from(vol_q)),
                     ])
+                })
+                .collect()
+        )
+    )
+}
+
+pub async fn get_order_fills(
+    Path(pool_name): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<Arc<AppState>>
+) -> Result<Json<Vec<HashMap<String, Value>>>, DeepBookError> {
+    let pool_id = match state.reader.get_pool_id_by_name(&pool_name.as_str()).await {
+        Err(_) => {
+            return Err(DeepBookError::InternalError("No valid pool names provided".to_string()));
+        }
+        Ok(v) => v,
+    };
+    // Parse start_time and end_time from query parameters (in seconds) and convert to milliseconds
+    let end_time = params.end_time();
+    let start_time = params
+        .start_time() // Convert to milliseconds
+        .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
+
+    let result: Vec<OrderFill> = state.reader.results(
+        schema::order_fills::table
+            .select(OrderFill::as_select())
+            .filter(schema::order_fills::checkpoint_timestamp_ms.between(start_time, end_time))
+            .filter(schema::order_fills::pool_id.eq(pool_id))
+    ).await?;
+
+    Ok(
+        Json(
+            result
+                .into_iter()
+                .map(|fill| {
+                    let mut map = HashMap::new();
+                    map.insert("event_digest".into(), Value::String(fill.event_digest));
+                    map.insert("digest".into(), Value::String(fill.digest));
+                    map.insert("sender".into(), Value::String(fill.sender));
+                    map.insert("checkpoint".into(), Value::from(fill.checkpoint));
+                    map.insert(
+                        "checkpoint_timestamp_ms".into(),
+                        Value::from(fill.checkpoint_timestamp_ms)
+                    );
+                    map.insert(
+                        "timestamp".into(),
+                        Value::from(((fill.checkpoint_timestamp_ms as f64) / 1000.0).round() as i64)
+                    );
+                    map.insert("package".into(), Value::String(fill.package));
+                    map.insert("pool_id".into(), Value::String(fill.pool_id));
+                    map.insert("maker_order_id".into(), Value::String(fill.maker_order_id));
+                    map.insert("taker_order_id".into(), Value::String(fill.taker_order_id));
+                    map.insert(
+                        "maker_client_order_id".into(),
+                        Value::from(fill.maker_client_order_id)
+                    );
+                    map.insert(
+                        "taker_client_order_id".into(),
+                        Value::from(fill.taker_client_order_id)
+                    );
+                    map.insert("price".into(), Value::from(fill.price));
+                    map.insert("taker_fee".into(), Value::from(fill.taker_fee));
+                    map.insert("taker_fee_is_deep".into(), Value::from(fill.taker_fee_is_deep));
+                    map.insert("maker_fee".into(), Value::from(fill.maker_fee));
+                    map.insert("maker_fee_is_deep".into(), Value::from(fill.maker_fee_is_deep));
+                    map.insert("taker_is_bid".into(), Value::from(fill.taker_is_bid));
+                    map.insert("base_quantity".into(), Value::from(fill.base_quantity));
+                    map.insert("quote_quantity".into(), Value::from(fill.quote_quantity));
+                    map.insert(
+                        "maker_balance_manager_id".into(),
+                        Value::String(fill.maker_balance_manager_id)
+                    );
+                    map.insert(
+                        "taker_balance_manager_id".into(),
+                        Value::String(fill.taker_balance_manager_id)
+                    );
+                    map.insert("onchain_timestamp".into(), Value::from(fill.onchain_timestamp));
+                    map
                 })
                 .collect()
         )
