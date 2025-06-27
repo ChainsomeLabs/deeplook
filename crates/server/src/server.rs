@@ -4,8 +4,7 @@
 use crate::error::DeepBookError;
 use axum::http::Method;
 use axum::{ extract::{ Path, Query, State }, http::StatusCode, routing::get, Json, Router };
-use chrono::{ DateTime };
-use deepbook_schema::models::{ BalancesSummary, OHLCV1min, OrderFill, Pools };
+use deepbook_schema::models::{ BalancesSummary, OrderFill, Pools };
 use deepbook_schema::*;
 use diesel::dsl::count_star;
 use diesel::dsl::{ max, min };
@@ -40,6 +39,13 @@ use sui_types::{
 use tokio::join;
 use tokio_util::sync::CancellationToken;
 
+use crate::aggregations::{
+    get_ohlcv,
+    avg_trade_size,
+    avg_duration_between_trades,
+    get_vwap
+};
+
 pub const SUI_MAINNET_URL: &str = "https://fullnode.mainnet.sui.io:443";
 pub const GET_POOLS_PATH: &str = "/get_pools";
 pub const GET_HISTORICAL_VOLUME_BY_BALANCE_MANAGER_ID_WITH_INTERVAL: &str =
@@ -67,8 +73,14 @@ pub const DEEP_TREASURY_ID: &str =
 pub const DEEP_SUPPLY_MODULE: &str = "deep";
 pub const DEEP_SUPPLY_FUNCTION: &str = "total_supply";
 pub const DEEP_SUPPLY_PATH: &str = "/deep_supply";
-pub const OHLCV_PATH: &str = "/ohlcv/:pool_name";
 pub const ORDER_FILLS_PATH: &str = "/order_fills/:pool_name";
+
+// Data Aggregation
+pub const OHLCV_PATH: &str = "/ohlcv/:pool_name";
+pub const AVG_TRADE_PATH: &str = "/get_avg_trade_size/:pool_name";
+pub const AVG_DURATION_BETWEEN_TRADES_PATH: &str = "/get_avg_duration_between_trades/:pool_name";
+pub const VWAP: &str = "/get_vwap/:pool_name";
+
 
 #[derive(Clone)]
 pub struct AppState {
@@ -160,7 +172,13 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
         .route(SUMMARY_PATH, get(summary))
         .with_state((state.clone(), rpc_url));
 
-    db_routes.merge(rpc_routes).layer(cors).layer(from_fn_with_state(state, track_metrics))
+    let aggregation_routes = Router::new()
+        .route(AVG_TRADE_PATH, get(avg_trade_size))
+        .route(AVG_DURATION_BETWEEN_TRADES_PATH, get(avg_duration_between_trades))
+        .route(VWAP, get(get_vwap))
+        .with_state(state.clone());
+
+    db_routes.merge(rpc_routes).merge(aggregation_routes).layer(cors).layer(from_fn_with_state(state, track_metrics))
 }
 
 impl axum::response::IntoResponse for DeepBookError {
@@ -1285,56 +1303,6 @@ async fn get_net_deposits(
     Ok(Json(net_deposits))
 }
 
-pub async fn get_ohlcv(
-    Path(pool_name): Path<String>,
-    Query(params): Query<HashMap<String, String>>,
-    State(state): State<Arc<AppState>>
-) -> Result<Json<Vec<HashMap<String, Value>>>, DeepBookError> {
-    let pool_id = match state.reader.get_pool_id_by_name(&pool_name.as_str()).await {
-        Err(_) => {
-            return Err(DeepBookError::InternalError("No valid pool names provided".to_string()));
-        }
-        Ok(v) => v,
-    };
-    // Parse start_time and end_time from query parameters (in seconds) and convert to milliseconds
-    let end_time = params.end_time();
-    let start_time = params
-        .start_time() // Convert to milliseconds
-        .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
-
-    let start_time_date = DateTime::from_timestamp_millis(start_time).unwrap().naive_utc();
-    let end_time_date = DateTime::from_timestamp_millis(end_time).unwrap().naive_utc();
-
-    let result: Vec<OHLCV1min> = state.reader.results(
-        view::ohlcv_1min::table
-            .select(OHLCV1min::as_select())
-            .filter(view::ohlcv_1min::bucket.between(start_time_date, end_time_date))
-            .filter(view::ohlcv_1min::pool_id.eq(pool_id))
-    ).await?;
-
-    Ok(
-        Json(
-            result
-                .into_iter()
-                .map(|ohlc| {
-                    let vol_b = ohlc.volume_base.to_plain_string();
-                    let vol_q = ohlc.volume_quote.to_plain_string();
-
-                    HashMap::from([
-                        ("timestamp".to_string(), Value::from(ohlc.bucket.and_utc().timestamp())),
-                        ("open".to_string(), Value::from(ohlc.open)),
-                        ("high".to_string(), Value::from(ohlc.high)),
-                        ("low".to_string(), Value::from(ohlc.low)),
-                        ("close".to_string(), Value::from(ohlc.close)),
-                        ("volume_base".to_string(), Value::from(vol_b)),
-                        ("volume_quote".to_string(), Value::from(vol_q)),
-                    ])
-                })
-                .collect()
-        )
-    )
-}
-
 pub async fn get_order_fills(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
@@ -1418,7 +1386,7 @@ fn parse_type_input(type_str: &str) -> Result<TypeInput, DeepBookError> {
     Ok(TypeInput::from(type_tag))
 }
 
-trait ParameterUtil {
+pub trait ParameterUtil {
     fn start_time(&self) -> Option<i64>;
     fn end_time(&self) -> i64;
     fn volume_in_base(&self) -> bool;
