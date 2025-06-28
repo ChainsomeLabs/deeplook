@@ -43,8 +43,10 @@ use crate::aggregations::{
     get_ohlcv,
     avg_trade_size,
     avg_duration_between_trades,
-    get_vwap
+    get_vwap,
+    orderbook_imbalance
 };
+
 
 pub const SUI_MAINNET_URL: &str = "https://fullnode.mainnet.sui.io:443";
 pub const GET_POOLS_PATH: &str = "/get_pools";
@@ -75,11 +77,13 @@ pub const DEEP_SUPPLY_FUNCTION: &str = "total_supply";
 pub const DEEP_SUPPLY_PATH: &str = "/deep_supply";
 pub const ORDER_FILLS_PATH: &str = "/order_fills/:pool_name";
 
+
 // Data Aggregation
 pub const OHLCV_PATH: &str = "/ohlcv/:pool_name";
 pub const AVG_TRADE_PATH: &str = "/get_avg_trade_size/:pool_name";
 pub const AVG_DURATION_BETWEEN_TRADES_PATH: &str = "/get_avg_duration_between_trades/:pool_name";
 pub const VWAP: &str = "/get_vwap/:pool_name";
+pub const OBI: &str = "/orderbook_imbalance/:pool_name";
 
 
 #[derive(Clone)]
@@ -162,7 +166,6 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
         .route(TRADE_COUNT_PATH, get(trade_count))
         .route(ORDER_UPDATES_PATH, get(order_updates))
         .route(ASSETS_PATH, get(assets))
-        .route(OHLCV_PATH, get(get_ohlcv))
         .route(ORDER_FILLS_PATH, get(get_order_fills))
         .with_state(state.clone());
 
@@ -170,13 +173,16 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
         .route(LEVEL2_PATH, get(orderbook))
         .route(DEEP_SUPPLY_PATH, get(deep_supply))
         .route(SUMMARY_PATH, get(summary))
+        .route(OBI, get(orderbook_imbalance))
         .with_state((state.clone(), rpc_url));
 
     let aggregation_routes = Router::new()
+        .route(OHLCV_PATH, get(get_ohlcv))
         .route(AVG_TRADE_PATH, get(avg_trade_size))
         .route(AVG_DURATION_BETWEEN_TRADES_PATH, get(avg_duration_between_trades))
         .route(VWAP, get(get_vwap))
         .with_state(state.clone());
+    
 
     db_routes.merge(rpc_routes).merge(aggregation_routes).layer(cors).layer(from_fn_with_state(state, track_metrics))
 }
@@ -1381,7 +1387,7 @@ pub async fn get_order_fills(
     )
 }
 
-fn parse_type_input(type_str: &str) -> Result<TypeInput, DeepBookError> {
+pub fn parse_type_input(type_str: &str) -> Result<TypeInput, DeepBookError> {
     let type_tag = TypeTag::from_str(type_str)?;
     Ok(TypeInput::from(type_tag))
 }
