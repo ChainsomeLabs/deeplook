@@ -57,17 +57,17 @@ pub async fn get_ohlcv(
         .unwrap()
         .naive_utc();
 
-    let aggregation = params
-        .get("interval")
-        .map(String::as_str).unwrap();
+    // let aggregation = params
+    //     .get("interval")
+    //     .map(String::as_str).unwrap();
 
-    if !ALLOWED_OHLCV_INTERVALS.contains(&aggregation) {
-        return Err(DeepBookError::InternalError(format!(
-            "Invalid interval '{}'. Allowed values are: {}",
-            aggregation,
-            ALLOWED_OHLCV_INTERVALS.join(", ")
-        )));
-    }
+    // if !ALLOWED_OHLCV_INTERVALS.contains(&aggregation) {
+    //     return Err(DeepBookError::InternalError(format!(
+    //         "Invalid interval '{}'. Allowed values are: {}",
+    //         aggregation,
+    //         ALLOWED_OHLCV_INTERVALS.join(", ")
+    //     )));
+    // }
 
     let result: Vec<OHLCV1min> = state
         .reader
