@@ -62,22 +62,19 @@ Endpoints that aggregate data to provide further insights.
 
 ### `/aggregation/avg_trade_size/<pool_name>?start_time=<unix_sec>&end_time=<unix_sec>`
 Returns the average base and quote volume per trade.  
-<!-- [Example](https://api.sui.carmine.finance/aggregation/avg_trade_size/SUI_USDC?start_time=1750866244&end_time=1750886244) -->
+[Example](https://api.sui.carmine.finance/get_avg_trade_size/SUI_USDC)
 
 ### `/aggregation/avg_duration_between_trades/<pool_name>?start_time=<unix_sec>&end_time=<unix_sec>`
 Returns the average time in milliseconds between consecutive trades.  
-<!-- [Example](https://api.sui.carmine.finance/aggregation/avg_duration_between_trades/SUI_USDC?start_time=1750866244&end_time=1750886244) -->
+[Example](https://api.sui.carmine.finance/get_avg_duration_between_trades/SUI_USDC)
 
 ### `/aggregation/vwap/<pool_name>?start_time=<unix_sec>&end_time=<unix_sec>`
 Returns the Volume-Weighted Average Price (VWAP) over the selected time window.  
-<!-- [Example](https://api.sui.carmine.finance/aggregation/vwap/SUI_USDC?start_time=1750866244&end_time=1750886244) -->
+[Example](https://api.sui.carmine.finance/get_vwap/SUI_USDC?start_time=1750866244&end_time=1750886244)
 
 ### `/aggregation/orderbook_imbalance/<pool_name>?depth=<int>&level=<1|2>`
 Returns the normalized order book imbalance (0–100 scale) at a given depth and level.  
-<!-- - `depth=0` uses the full book  
-- `level=1` returns the top of book (best bid/ask)  
-- `level=2` uses depth to define how many ticks to include   -->
-<!-- [Example](https://api.sui.carmine.finance/aggregation/orderbook_imbalance/SUI_USDC?depth=100&level=2) -->
+[Example](https://api.sui.carmine.finance/orderbook_imbalance/SUI_USDC?depth=100&level=2)
 
 ---
 
