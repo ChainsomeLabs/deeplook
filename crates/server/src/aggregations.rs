@@ -179,9 +179,6 @@ pub async fn avg_duration_between_trades(
         .start_time()
         .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
 
-    // Parse optional filters for balance managers
-    let maker_balance_manager_filter = params.get("maker_balance_manager_id").cloned();
-    let taker_balance_manager_filter = params.get("taker_balance_manager_id").cloned();
 
     let trades = state
         .reader
@@ -191,8 +188,8 @@ pub async fn avg_duration_between_trades(
             start_time,
             end_time,
             i64::MAX,
-            maker_balance_manager_filter,
-            taker_balance_manager_filter,
+            None,
+            None,
         )
         .await?;
 
@@ -203,14 +200,15 @@ pub async fn avg_duration_between_trades(
                 _,
                 _,
                 _,
-                _, // base_quantity,
-                _, // quote_quantity,
+                _, 
+                _, 
                 timestamp,
                 _,
                 _,
                 _,
             )| { timestamp },
         )
+        .rev()
         .collect();
 
     let diffs: Vec<i64> = timestamps.windows(2).map(|w| w[1] - w[0]).collect();
@@ -226,16 +224,15 @@ pub async fn get_vwap(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Option<i128>>, DeepBookError> {
+) -> Result<Json<Option<f64>>, DeepBookError> {
     // Fetch all pools to map names to IDs and decimals
-    let (pool_id, _, _) = state.reader.get_pool_decimals(&pool_name).await?;
+    let (pool_id, base_decimals, quote_decimals) =
+        state.reader.get_pool_decimals(&pool_name).await?;
     // Parse start_time and end_time
     let end_time = params.end_time();
     let start_time = params
         .start_time()
         .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
-
-    // Parse optional filters for balance managers
 
     let trades = state
         .reader
@@ -249,16 +246,27 @@ pub async fn get_vwap(
             None,
         )
         .await?;
+    
+    // Conversion factors for decimals
+    let base_factor = (10u64).pow(base_decimals as u32);
+    let price_factor = (10u64).pow(
+        (9 - base_decimals + quote_decimals) as u32
+    );
 
-    let (total_price_qty, total_qty) = trades
-        .into_iter()
-        .map(|(_, _, price, base_quantity, _, _, _, _, _)| (price * base_quantity, base_quantity))
-        .fold((0i128, 0i64), |(sum_price_qty, sum_qty), (px_qty, qty)| {
-            (sum_price_qty + px_qty as i128, sum_qty + qty)
-        });
+    let mut total_price_qty: f64 = 0.0;
+    let mut total_qty: f64 = 0.0;
 
-    let vwap = if total_qty > 0 {
-        Some(total_price_qty / total_qty as i128)
+    for (_, _, price, base_quantity, _, _, _, _, _) in trades {
+
+        let scaled_price = price as f64 / price_factor as f64;
+        let scaled_base_quantity = base_quantity as f64 / base_factor as f64;
+
+        total_price_qty += scaled_price * scaled_base_quantity;
+        total_qty += scaled_base_quantity;
+    }
+
+    let vwap = if total_qty > 0.0 {
+        Some(total_price_qty as f64 / total_qty as f64)
     } else {
         None
     };
