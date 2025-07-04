@@ -1,5 +1,6 @@
 use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 use crate::models::deepbook::order_info::OrderFilled;
+use crate::utils::ms_to_secs;
 use crate::DeepbookEnv;
 use async_trait::async_trait;
 use deepbook_schema::models::OrderFill;
@@ -59,6 +60,7 @@ impl Processor for OrderFillHandler {
                             sender: tx.transaction.sender_address().to_string(),
                             checkpoint,
                             checkpoint_timestamp_ms,
+                            timestamp: ms_to_secs(checkpoint_timestamp_ms),
                             package: package.clone(),
                             pool_id: event.pool_id.to_string(),
                             maker_order_id: event.maker_order_id.to_string(),

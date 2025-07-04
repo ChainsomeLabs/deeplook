@@ -1,20 +1,20 @@
 use crate::error::DeepBookError;
 use crate::metrics::RpcMetrics;
-use deepbook_schema::models::{ OrderFillSummary, Pools };
+use deepbook_schema::models::{OrderFillSummary, Pools};
 use deepbook_schema::schema;
 use diesel::deserialize::FromSqlRow;
 use diesel::dsl::sql;
 use diesel::expression::QueryMetadata;
 use diesel::pg::Pg;
-use diesel::query_builder::{ Query, QueryFragment, QueryId };
+use diesel::query_builder::{Query, QueryFragment, QueryId};
 use diesel::query_dsl::CompatibleType;
-use diesel::{ BoolExpressionMethods, ExpressionMethods, QueryDsl, SelectableHelper };
+use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, SelectableHelper};
 use diesel_async::methods::LoadQuery;
-use diesel_async::{ AsyncPgConnection, RunQueryDsl };
+use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use prometheus::Registry;
 use std::sync::Arc;
 use sui_indexer_alt_metrics::db::DbConnectionStatsCollector;
-use sui_pg_db::{ Db, DbArgs };
+use sui_pg_db::{Db, DbArgs};
 use url::Url;
 
 #[derive(Clone)]
@@ -28,12 +28,13 @@ impl Reader {
         database_url: Url,
         db_args: DbArgs,
         metrics: Arc<RpcMetrics>,
-        registry: &Registry
+        registry: &Registry,
     ) -> Result<Self, anyhow::Error> {
         let db = Db::for_read(database_url, db_args).await?;
-        registry.register(
-            Box::new(DbConnectionStatsCollector::new(Some("deepbook_api_db"), db.clone()))
-        )?;
+        registry.register(Box::new(DbConnectionStatsCollector::new(
+            Some("deepbook_api_db"),
+            db.clone(),
+        )))?;
 
         // Try to open a read connection to verify we can
         // connect to the DB on startup.
@@ -43,10 +44,10 @@ impl Reader {
     }
 
     pub(crate) async fn results<Q, U>(&self, query: Q) -> Result<Vec<U>, anyhow::Error>
-        where
-            U: Send,
-            Q: RunQueryDsl<AsyncPgConnection> + 'static,
-            Q: LoadQuery<'static, AsyncPgConnection, U> + QueryFragment<Pg> + Send
+    where
+        U: Send,
+        Q: RunQueryDsl<AsyncPgConnection> + 'static,
+        Q: LoadQuery<'static, AsyncPgConnection, U> + QueryFragment<Pg> + Send,
     {
         let mut conn = self.db.connect().await?;
         let _guard = self.metrics.db_latency.start_timer();
@@ -62,13 +63,13 @@ impl Reader {
     }
 
     pub async fn first<'q, Q, ST, U>(&self, query: Q) -> Result<U, anyhow::Error>
-        where
-            Q: diesel::query_dsl::limit_dsl::LimitDsl,
-            Q::Output: Query + QueryFragment<Pg> + QueryId + Send + 'q,
-            <Q::Output as Query>::SqlType: CompatibleType<U, Pg, SqlType = ST>,
-            U: Send + FromSqlRow<ST, Pg> + 'static,
-            Pg: QueryMetadata<<Q::Output as Query>::SqlType>,
-            ST: 'static
+    where
+        Q: diesel::query_dsl::limit_dsl::LimitDsl,
+        Q::Output: Query + QueryFragment<Pg> + QueryId + Send + 'q,
+        <Q::Output as Query>::SqlType: CompatibleType<U, Pg, SqlType = ST>,
+        U: Send + FromSqlRow<ST, Pg> + 'static,
+        Pg: QueryMetadata<<Q::Output as Query>::SqlType>,
+        ST: 'static,
     {
         let mut conn = self.db.connect().await?;
         let _guard = self.metrics.db_latency.start_timer();
@@ -84,7 +85,9 @@ impl Reader {
     }
 
     pub async fn get_pools(&self) -> Result<Vec<Pools>, DeepBookError> {
-        Ok(self.results(schema::pools::table.select(Pools::as_select())).await?)
+        Ok(self
+            .results(schema::pools::table.select(Pools::as_select()))
+            .await?)
     }
 
     pub async fn get_pool_id_by_name(&self, target_name: &str) -> Result<String, DeepBookError> {
@@ -100,7 +103,7 @@ impl Reader {
         start_time: i64,
         end_time: i64,
         pool_ids: &Vec<String>,
-        volume_in_base: bool
+        volume_in_base: bool,
     ) -> Result<Vec<(String, i64)>, DeepBookError> {
         let column_to_query = if volume_in_base {
             sql::<diesel::sql_types::BigInt>("base_quantity")
@@ -122,7 +125,7 @@ impl Reader {
         end_time: i64,
         pool_ids: &Vec<String>,
         balance_manager_id: &str,
-        volume_in_base: bool
+        volume_in_base: bool,
     ) -> Result<Vec<OrderFillSummary>, DeepBookError> {
         let column_to_query = if volume_in_base {
             sql::<diesel::sql_types::BigInt>("base_quantity")
@@ -142,7 +145,7 @@ impl Reader {
             .filter(
                 schema::order_fills::maker_balance_manager_id
                     .eq(balance_manager_id.clone())
-                    .or(schema::order_fills::taker_balance_manager_id.eq(balance_manager_id))
+                    .or(schema::order_fills::taker_balance_manager_id.eq(balance_manager_id)),
             );
         Ok(self.results(query).await?)
     }
@@ -151,7 +154,7 @@ impl Reader {
         &self,
         start_time: i64,
         end_time: i64,
-        pool_id: &str
+        pool_id: &str,
     ) -> Result<i64, DeepBookError> {
         let query = schema::order_fills::table
             .filter(schema::order_fills::checkpoint_timestamp_ms.between(start_time, end_time))
@@ -163,7 +166,7 @@ impl Reader {
 
     pub async fn get_pool_decimals(
         &self,
-        pool_name: &str
+        pool_name: &str,
     ) -> Result<(String, i16, i16), DeepBookError> {
         let query = schema::pools::table
             .filter(schema::pools::pool_name.eq(pool_name))
@@ -172,9 +175,9 @@ impl Reader {
                 schema::pools::base_asset_decimals,
                 schema::pools::quote_asset_decimals,
             ));
-        self.first(query).await.map_err(|_|
-            DeepBookError::InternalError(format!("Pool '{}' not found", pool_name))
-        )
+        self.first(query)
+            .await
+            .map_err(|_| DeepBookError::InternalError(format!("Pool '{}' not found", pool_name)))
     }
 
     pub async fn get_orders(
@@ -185,8 +188,9 @@ impl Reader {
         end_time: i64,
         limit: i64,
         maker_balance_manager: Option<String>,
-        taker_balance_manager: Option<String>
-    ) -> Result<Vec<(String, String, i64, i64, i64, i64, bool, String, String)>, DeepBookError> {
+        taker_balance_manager: Option<String>,
+    ) -> Result<Vec<(String, String, i64, i64, i64, i64, bool, String, String)>, DeepBookError>
+    {
         let mut connection = self.db.connect().await?;
         // Build the query dynamically
         let mut query = schema::order_fills::table
@@ -219,13 +223,13 @@ impl Reader {
                 schema::order_fills::maker_balance_manager_id,
                 schema::order_fills::taker_balance_manager_id,
             ))
-            .load::<(String, String, i64, i64, i64, i64, bool, String, String)>(
-                &mut connection
-            ).await
+            .load::<(String, String, i64, i64, i64, i64, bool, String, String)>(&mut connection)
+            .await
             .map_err(|_| {
-                DeepBookError::InternalError(
-                    format!("No trades found for pool '{}' in the specified time range", pool_name)
-                )
+                DeepBookError::InternalError(format!(
+                    "No trades found for pool '{}' in the specified time range",
+                    pool_name
+                ))
             });
 
         if res.is_ok() {
@@ -243,7 +247,7 @@ impl Reader {
         end_time: i64,
         limit: i64,
         balance_manager_filter: Option<String>,
-        status_filter: Option<String>
+        status_filter: Option<String>,
     ) -> Result<Vec<(String, i64, i64, i64, i64, i64, bool, String, String)>, DeepBookError> {
         let mut connection = self.db.connect().await?;
         let mut query = schema::order_updates::table
@@ -275,7 +279,8 @@ impl Reader {
         let _guard = self.metrics.db_latency.start_timer();
 
         let res = query
-            .load::<(String, i64, i64, i64, i64, i64, bool, String, String)>(&mut connection).await
+            .load::<(String, i64, i64, i64, i64, i64, bool, String, String)>(&mut connection)
+            .await
             .map_err(|_| DeepBookError::InternalError("Error fetching trade details".to_string()));
 
         if res.is_ok() {

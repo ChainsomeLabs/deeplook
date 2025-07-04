@@ -5,6 +5,7 @@ use url::Url;
 
 pub mod handlers;
 pub(crate) mod models;
+pub(crate) mod utils;
 
 pub const MAINNET_REMOTE_STORE_URL: &str = "https://checkpoints.mainnet.sui.io";
 pub const TESTNET_REMOTE_STORE_URL: &str = "https://checkpoints.testnet.sui.io";
@@ -49,7 +50,8 @@ pub enum DeepbookEnv {
 macro_rules! event_type_fn {
     (
         $(#[$meta:meta])*
-        $fn_name:ident, $($path:ident)::+
+        $fn_name:ident,
+        $($path:ident)::+
     ) => {
         $(#[$meta])*
         fn $fn_name(&self) -> StructTag {

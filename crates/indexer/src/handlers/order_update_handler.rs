@@ -1,6 +1,7 @@
 use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 use crate::models::deepbook::order::{OrderCanceled, OrderModified};
 use crate::models::deepbook::order_info::{OrderExpired, OrderPlaced};
+use crate::utils::ms_to_secs;
 use crate::DeepbookEnv;
 use deepbook_schema::models::{OrderUpdate, OrderUpdateStatus};
 use deepbook_schema::schema::order_updates;
@@ -112,6 +113,7 @@ fn process_order_placed(
         sender,
         checkpoint: checkpoint as i64,
         checkpoint_timestamp_ms: checkpoint_timestamp_ms as i64,
+        timestamp: ms_to_secs(checkpoint_timestamp_ms as i64),
         package,
         status: OrderUpdateStatus::Placed,
         pool_id: order_placed.pool_id.to_string(),
@@ -140,6 +142,7 @@ fn process_order_modified(
         sender,
         checkpoint: checkpoint as i64,
         checkpoint_timestamp_ms: checkpoint_timestamp_ms as i64,
+        timestamp: ms_to_secs(checkpoint_timestamp_ms as i64),
         package,
         status: OrderUpdateStatus::Modified,
         pool_id: order_modified.pool_id.to_string(),
@@ -168,6 +171,7 @@ fn process_order_canceled(
         sender,
         checkpoint: checkpoint as i64,
         checkpoint_timestamp_ms: checkpoint_timestamp_ms as i64,
+        timestamp: ms_to_secs(checkpoint_timestamp_ms as i64),
         package,
         status: OrderUpdateStatus::Canceled,
         pool_id: order_canceled.pool_id.to_string(),
@@ -197,6 +201,7 @@ fn process_order_expired(
         sender,
         checkpoint: checkpoint as i64,
         checkpoint_timestamp_ms: checkpoint_timestamp_ms as i64,
+        timestamp: ms_to_secs(checkpoint_timestamp_ms as i64),
         package,
         status: OrderUpdateStatus::Expired,
         pool_id: order_expired.pool_id.to_string(),

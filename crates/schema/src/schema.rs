@@ -1,15 +1,27 @@
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    balances (event_digest) {
+    assets (type_) {
+        #[sql_name = "type"]
+        type_ -> Text,
+        name -> Text,
+        symbol -> Text,
+        decimals -> Int2,
+        ucid -> Nullable<Int4>,
+        package_id -> Nullable<Text>,
+        package_address_url -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    balances (event_digest, timestamp) {
         event_digest -> Text,
         digest -> Text,
         sender -> Text,
         checkpoint -> Int8,
-        timestamp -> Timestamp,
+        created_at -> Timestamp,
         checkpoint_timestamp_ms -> Int8,
+        timestamp -> Timestamp,
         package -> Text,
         balance_manager_id -> Text,
         asset -> Text,
@@ -19,13 +31,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    flashloans (event_digest) {
+    flashloans (event_digest, timestamp) {
         event_digest -> Text,
         digest -> Text,
         sender -> Text,
         checkpoint -> Int8,
-        timestamp -> Timestamp,
+        created_at -> Timestamp,
         checkpoint_timestamp_ms -> Int8,
+        timestamp -> Timestamp,
         package -> Text,
         borrow -> Bool,
         pool_id -> Text,
@@ -35,13 +48,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    order_fills (event_digest) {
+    order_fills (event_digest, timestamp, pool_id) {
         event_digest -> Text,
         digest -> Text,
         sender -> Text,
         checkpoint -> Int8,
-        timestamp -> Timestamp,
+        created_at -> Timestamp,
         checkpoint_timestamp_ms -> Int8,
+        timestamp -> Timestamp,
         package -> Text,
         pool_id -> Text,
         maker_order_id -> Text,
@@ -63,13 +77,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    order_updates (event_digest) {
+    order_updates (event_digest, timestamp, pool_id) {
         event_digest -> Text,
         digest -> Text,
         sender -> Text,
         checkpoint -> Int8,
-        timestamp -> Timestamp,
+        created_at -> Timestamp,
         checkpoint_timestamp_ms -> Int8,
+        timestamp -> Timestamp,
         package -> Text,
         status -> Text,
         pool_id -> Text,
@@ -87,13 +102,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    pool_prices (event_digest) {
+    pool_prices (event_digest, timestamp) {
         event_digest -> Text,
         digest -> Text,
         sender -> Text,
         checkpoint -> Int8,
-        timestamp -> Timestamp,
+        created_at -> Timestamp,
         checkpoint_timestamp_ms -> Int8,
+        timestamp -> Timestamp,
         package -> Text,
         target_pool -> Text,
         reference_pool -> Text,
@@ -120,13 +136,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    proposals (event_digest) {
+    proposals (event_digest, timestamp, pool_id) {
         event_digest -> Text,
         digest -> Text,
         sender -> Text,
         checkpoint -> Int8,
-        timestamp -> Timestamp,
+        created_at -> Timestamp,
         checkpoint_timestamp_ms -> Int8,
+        timestamp -> Timestamp,
         package -> Text,
         pool_id -> Text,
         balance_manager_id -> Text,
@@ -138,13 +155,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    rebates (event_digest) {
+    rebates (event_digest, timestamp, pool_id) {
         event_digest -> Text,
         digest -> Text,
         sender -> Text,
         checkpoint -> Int8,
-        timestamp -> Timestamp,
+        created_at -> Timestamp,
         checkpoint_timestamp_ms -> Int8,
+        timestamp -> Timestamp,
         package -> Text,
         pool_id -> Text,
         balance_manager_id -> Text,
@@ -154,13 +172,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    stakes (event_digest) {
+    stakes (event_digest, timestamp, pool_id) {
         event_digest -> Text,
         digest -> Text,
         sender -> Text,
         checkpoint -> Int8,
-        timestamp -> Timestamp,
+        created_at -> Timestamp,
         checkpoint_timestamp_ms -> Int8,
+        timestamp -> Timestamp,
         package -> Text,
         pool_id -> Text,
         balance_manager_id -> Text,
@@ -183,13 +202,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    trade_params_update (event_digest) {
+    trade_params_update (event_digest, timestamp, pool_id) {
         event_digest -> Text,
         digest -> Text,
         sender -> Text,
         checkpoint -> Int8,
-        timestamp -> Timestamp,
+        created_at -> Timestamp,
         checkpoint_timestamp_ms -> Int8,
+        timestamp -> Timestamp,
         package -> Text,
         pool_id -> Text,
         taker_fee -> Int8,
@@ -199,13 +219,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    votes (event_digest) {
+    votes (event_digest, timestamp, pool_id) {
         event_digest -> Text,
         digest -> Text,
         sender -> Text,
         checkpoint -> Int8,
-        timestamp -> Timestamp,
+        created_at -> Timestamp,
         checkpoint_timestamp_ms -> Int8,
+        timestamp -> Timestamp,
         package -> Text,
         pool_id -> Text,
         balance_manager_id -> Text,
@@ -216,19 +237,8 @@ diesel::table! {
     }
 }
 
-diesel::table! {
-    assets (asset_type) {
-        asset_type -> Text,
-        name -> Text,
-        symbol -> Text,
-        decimals -> Int2,
-        ucid -> Nullable<Int4>,
-        package_id -> Nullable<Text>,
-        package_address_url -> Nullable<Text>,
-    }
-}
-
 diesel::allow_tables_to_appear_in_same_query!(
+    assets,
     balances,
     flashloans,
     order_fills,
@@ -240,8 +250,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     stakes,
     sui_error_transactions,
     trade_params_update,
-    votes,
-    assets,
+    votes
 );
 
 diesel::table! {

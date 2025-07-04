@@ -1,44 +1,37 @@
 use chrono::DateTime;
 use serde_json::Value;
+use std::{ collections::HashMap, i64, sync::Arc };
 use url::Url;
-use std::{collections::HashMap, i64, sync::Arc};
 
-use sui_sdk::SuiClientBuilder;
-use sui_json_rpc_types::{ SuiObjectData, SuiObjectDataOptions, SuiObjectResponse };
 use std::time::{ SystemTime, UNIX_EPOCH };
+use sui_json_rpc_types::{ SuiObjectData, SuiObjectDataOptions, SuiObjectResponse };
+use sui_sdk::SuiClientBuilder;
 use sui_types::{
     base_types::{ ObjectID, ObjectRef, SuiAddress },
     programmable_transaction_builder::ProgrammableTransactionBuilder,
     transaction::{ Argument, CallArg, Command, ObjectArg, ProgrammableMoveCall, TransactionKind },
 };
 
-use crate::server::{
-    parse_type_input, DEEPBOOK_PACKAGE_ID, LEVEL2_FUNCTION, LEVEL2_MODULE
-};
+use crate::server::{ parse_type_input, DEEPBOOK_PACKAGE_ID, LEVEL2_FUNCTION, LEVEL2_MODULE };
 
-use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+use diesel::{ ExpressionMethods, QueryDsl, SelectableHelper };
 
-use axum::{
-    extract::{Path, Query, State},
-    Json,
-};
+use axum::{ extract::{ Path, Query, State }, Json };
 
 use crate::error::DeepBookError;
-use crate::server::{AppState, ParameterUtil};
-use deepbook_schema::{models::OHLCV1min, schema, view};
+use crate::server::{ AppState, ParameterUtil };
+use deepbook_schema::{ models::OHLCV1min, schema, view };
 
 // const ALLOWED_OHLCV_INTERVALS: &[&str] = &["1min", "15min", "1h"];
 
 pub async fn get_ohlcv(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<Json<Vec<HashMap<String, Value>>>, DeepBookError> {
     let pool_id = match state.reader.get_pool_id_by_name(&pool_name.as_str()).await {
         Err(_) => {
-            return Err(DeepBookError::InternalError(
-                "No valid pool names provided".to_string(),
-            ));
+            return Err(DeepBookError::InternalError("No valid pool names provided".to_string()));
         }
         Ok(v) => v,
     };
@@ -48,12 +41,8 @@ pub async fn get_ohlcv(
         .start_time() // Convert to milliseconds
         .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
 
-    let start_time_date = DateTime::from_timestamp_millis(start_time)
-        .unwrap()
-        .naive_utc();
-    let end_time_date = DateTime::from_timestamp_millis(end_time)
-        .unwrap()
-        .naive_utc();
+    let start_time_date = DateTime::from_timestamp_millis(start_time).unwrap().naive_utc();
+    let end_time_date = DateTime::from_timestamp_millis(end_time).unwrap().naive_utc();
 
     // let aggregation = params
     //     .get("interval")
@@ -67,53 +56,48 @@ pub async fn get_ohlcv(
     //     )));
     // }
 
-    let result: Vec<OHLCV1min> = state
-        .reader
-        .results(
-            view::ohlcv_1min::table
-                .select(OHLCV1min::as_select())
-                .filter(view::ohlcv_1min::bucket.between(start_time_date, end_time_date))
-                .filter(view::ohlcv_1min::pool_id.eq(pool_id)),
-        )
-        .await?;
+    let result: Vec<OHLCV1min> = state.reader.results(
+        view::ohlcv_1min::table
+            .select(OHLCV1min::as_select())
+            .filter(view::ohlcv_1min::bucket.between(start_time_date, end_time_date))
+            .filter(view::ohlcv_1min::pool_id.eq(pool_id))
+    ).await?;
 
-    Ok(Json(
-        result
-            .into_iter()
-            .map(|ohlc| {
-                let vol_b = ohlc.volume_base.to_plain_string();
-                let vol_q = ohlc.volume_quote.to_plain_string();
-                HashMap::from([
-                    (
-                        "timestamp".to_string(),
-                        Value::from(ohlc.bucket.and_utc().timestamp()),
-                    ),
-                    ("open".to_string(), Value::from(ohlc.open)),
-                    ("high".to_string(), Value::from(ohlc.high)),
-                    ("low".to_string(), Value::from(ohlc.low)),
-                    ("close".to_string(), Value::from(ohlc.close)),
-                    ("volume_base".to_string(), Value::from(vol_b)),
-                    ("volume_quote".to_string(), Value::from(vol_q)),
-                ])
-            })
-            .collect(),
-    ))
+    Ok(
+        Json(
+            result
+                .into_iter()
+                .map(|ohlc| {
+                    let vol_b = ohlc.volume_base.to_plain_string();
+                    let vol_q = ohlc.volume_quote.to_plain_string();
+                    HashMap::from([
+                        ("timestamp".to_string(), Value::from(ohlc.bucket.and_utc().timestamp())),
+                        ("open".to_string(), Value::from(ohlc.open)),
+                        ("high".to_string(), Value::from(ohlc.high)),
+                        ("low".to_string(), Value::from(ohlc.low)),
+                        ("close".to_string(), Value::from(ohlc.close)),
+                        ("volume_base".to_string(), Value::from(vol_b)),
+                        ("volume_quote".to_string(), Value::from(vol_q)),
+                    ])
+                })
+                .collect()
+        )
+    )
 }
 
 pub async fn avg_trade_size(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<Json<HashMap<String, Value>>, DeepBookError> {
     // Fetch all pools to map names to IDs and decimals
-    let (pool_id, base_decimals, quote_decimals) =
-        state.reader.get_pool_decimals(&pool_name).await?;
+    let (pool_id, base_decimals, quote_decimals) = state.reader.get_pool_decimals(
+        &pool_name
+    ).await?;
 
     // Parse start_time and end_time
     let end_time = params.end_time();
-    let start_time = params
-        .start_time()
-        .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
+    let start_time = params.start_time().unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
 
     let base_decimals = base_decimals as u8;
     let quote_decimals = quote_decimals as u8;
@@ -122,31 +106,31 @@ pub async fn avg_trade_size(
         .filter(schema::order_fills::pool_id.eq(pool_id))
         .filter(schema::order_fills::checkpoint_timestamp_ms.between(start_time, end_time));
 
-    let full_query = query.select(
-      (
+    let full_query = query.select((
         schema::order_fills::base_quantity,
         schema::order_fills::quote_quantity,
-      )  
-    );
+    ));
 
     let res: Vec<(i64, i64)> = state.reader.results(full_query).await?;
     let total_trades = res.len();
 
     if total_trades == 0 {
-        return Ok(Json(
-            HashMap::from([
-                ("avg_base_volume".to_string(), Value::from(0)),
-                ("avg_quote_volume".to_string(), Value::from(0)),
-            ])
-        ))
+        return Ok(
+            Json(
+                HashMap::from([
+                    ("avg_base_volume".to_string(), Value::from(0)),
+                    ("avg_quote_volume".to_string(), Value::from(0)),
+                ])
+            )
+        );
     }
 
     let (total_base, total_quote) = res
         .iter()
-        .fold(
-            (0, 0), 
-            |(base_acc, quote_acc), (base_e, quote_e)| (base_acc + base_e, quote_acc + quote_e)
-        );
+        .fold((0, 0), |(base_acc, quote_acc), (base_e, quote_e)| (
+            base_acc + base_e,
+            quote_acc + quote_e,
+        ));
 
     let mean_base: f64 = (total_base as f64) / (total_trades as f64);
     let mean_quote: f64 = (total_quote as f64) / (total_trades as f64);
@@ -157,7 +141,7 @@ pub async fn avg_trade_size(
 
     let mean_base_scaled = mean_base / base_factor;
     let mean_quote_scaled = mean_quote / quote_factor;
-    
+
     let data = HashMap::from([
         ("avg_base_volume".to_string(), Value::from(mean_base_scaled)),
         ("avg_quote_volume".to_string(), Value::from(mean_quote_scaled)),
@@ -169,51 +153,36 @@ pub async fn avg_trade_size(
 pub async fn avg_duration_between_trades(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<Json<Value>, DeepBookError> {
     // Fetch all pools to map names to IDs and decimals
     let (pool_id, _, _) = state.reader.get_pool_decimals(&pool_name).await?;
     // Parse start_time and end_time
     let end_time = params.end_time();
-    let start_time = params
-        .start_time()
-        .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
+    let start_time = params.start_time().unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
 
-
-    let trades = state
-        .reader
-        .get_orders(
-            pool_name,
-            pool_id,
-            start_time,
-            end_time,
-            i64::MAX,
-            None,
-            None,
-        )
-        .await?;
+    let trades = state.reader.get_orders(
+        pool_name,
+        pool_id,
+        start_time,
+        end_time,
+        i64::MAX,
+        None,
+        None
+    ).await?;
 
     let timestamps: Vec<i64> = trades
         .into_iter()
-        .map(
-            |(
-                _,
-                _,
-                _,
-                _, 
-                _, 
-                timestamp,
-                _,
-                _,
-                _,
-            )| { timestamp },
-        )
+        .map(|(_, _, _, _, _, timestamp, _, _, _)| { timestamp })
         .rev()
         .collect();
 
-    let diffs: Vec<i64> = timestamps.windows(2).map(|w| w[1] - w[0]).collect();
+    let diffs: Vec<i64> = timestamps
+        .windows(2)
+        .map(|w| w[1] - w[0])
+        .collect();
 
-    let avg_diff = diffs.iter().sum::<i64>() / diffs.len() as i64;
+    let avg_diff = diffs.iter().sum::<i64>() / (diffs.len() as i64);
 
     let data = Value::from(avg_diff);
 
@@ -223,57 +192,49 @@ pub async fn avg_duration_between_trades(
 pub async fn get_vwap(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>
 ) -> Result<Json<Option<f64>>, DeepBookError> {
     // Fetch all pools to map names to IDs and decimals
-    let (pool_id, base_decimals, quote_decimals) =
-        state.reader.get_pool_decimals(&pool_name).await?;
+    let (pool_id, base_decimals, quote_decimals) = state.reader.get_pool_decimals(
+        &pool_name
+    ).await?;
     // Parse start_time and end_time
     let end_time = params.end_time();
-    let start_time = params
-        .start_time()
-        .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
+    let start_time = params.start_time().unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
 
-    let trades = state
-        .reader
-        .get_orders(
-            pool_name,
-            pool_id,
-            start_time,
-            end_time,
-            i64::MAX,
-            None,
-            None,
-        )
-        .await?;
-    
+    let trades = state.reader.get_orders(
+        pool_name,
+        pool_id,
+        start_time,
+        end_time,
+        i64::MAX,
+        None,
+        None
+    ).await?;
+
     // Conversion factors for decimals
     let base_factor = (10u64).pow(base_decimals as u32);
-    let price_factor = (10u64).pow(
-        (9 - base_decimals + quote_decimals) as u32
-    );
+    let price_factor = (10u64).pow((9 - base_decimals + quote_decimals) as u32);
 
     let mut total_price_qty: f64 = 0.0;
     let mut total_qty: f64 = 0.0;
 
     for (_, _, price, base_quantity, _, _, _, _, _) in trades {
-
-        let scaled_price = price as f64 / price_factor as f64;
-        let scaled_base_quantity = base_quantity as f64 / base_factor as f64;
+        let scaled_price = (price as f64) / (price_factor as f64);
+        let scaled_base_quantity = (base_quantity as f64) / (base_factor as f64);
 
         total_price_qty += scaled_price * scaled_base_quantity;
         total_qty += scaled_base_quantity;
     }
 
     let vwap = if total_qty > 0.0 {
-        Some(total_price_qty as f64 / total_qty as f64)
+        Some((total_price_qty as f64) / (total_qty as f64))
     } else {
         None
     };
 
     Ok(Json(vwap))
 }
-
 
 pub async fn orderbook_imbalance(
     Path(pool_name): Path<String>,
@@ -499,7 +460,7 @@ pub async fn orderbook_imbalance(
 
     let bid_volume = sum_quantities(&bids);
     let ask_volume = sum_quantities(&asks);
-    let obi = if (bid_volume + ask_volume) > 0.0 {
+    let obi = if bid_volume + ask_volume > 0.0 {
         Some((bid_volume - ask_volume) / (bid_volume + ask_volume))
     } else {
         None
@@ -510,15 +471,18 @@ pub async fn orderbook_imbalance(
 }
 
 fn sum_quantities(orderbook_side: &[Value]) -> f64 {
-    orderbook_side.iter().filter_map(|entry| {
-        if let Value::Array(arr) = entry {
-            if arr.len() == 2 {
-                arr[1].as_str().and_then(|qty_str| qty_str.parse::<f64>().ok())
+    orderbook_side
+        .iter()
+        .filter_map(|entry| {
+            if let Value::Array(arr) = entry {
+                if arr.len() == 2 {
+                    arr[1].as_str().and_then(|qty_str| qty_str.parse::<f64>().ok())
+                } else {
+                    None
+                }
             } else {
                 None
             }
-        } else {
-            None
-        }
-    }).sum()
+        })
+        .sum()
 }

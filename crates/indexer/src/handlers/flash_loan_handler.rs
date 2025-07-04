@@ -1,5 +1,6 @@
 use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 use crate::models::deepbook::vault::FlashLoanBorrowed;
+use crate::utils::ms_to_secs;
 use crate::DeepbookEnv;
 use async_trait::async_trait;
 use deepbook_schema::models::Flashloan;
@@ -59,6 +60,7 @@ impl Processor for FlashLoanHandler {
                             sender: tx.transaction.sender_address().to_string(),
                             checkpoint,
                             checkpoint_timestamp_ms,
+                            timestamp: ms_to_secs(checkpoint_timestamp_ms),
                             package: package.clone(),
                             pool_id: event.pool_id.to_string(),
                             borrow_quantity: event.borrow_quantity as i64,
