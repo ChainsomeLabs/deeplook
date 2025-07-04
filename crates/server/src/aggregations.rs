@@ -10,8 +10,6 @@ use sui_types::{
     base_types::{ ObjectID, ObjectRef, SuiAddress },
     programmable_transaction_builder::ProgrammableTransactionBuilder,
     transaction::{ Argument, CallArg, Command, ObjectArg, ProgrammableMoveCall, TransactionKind },
-    // type_input::TypeInput,
-    // TypeTag,
 };
 
 use crate::server::{
@@ -29,7 +27,7 @@ use crate::error::DeepBookError;
 use crate::server::{AppState, ParameterUtil};
 use deepbook_schema::{models::OHLCV1min, schema, view};
 
-const ALLOWED_OHLCV_INTERVALS: &[&str] = &["1min", "15min", "1h"];
+// const ALLOWED_OHLCV_INTERVALS: &[&str] = &["1min", "15min", "1h"];
 
 pub async fn get_ohlcv(
     Path(pool_name): Path<String>,
@@ -110,63 +108,59 @@ pub async fn avg_trade_size(
     // Fetch all pools to map names to IDs and decimals
     let (pool_id, base_decimals, quote_decimals) =
         state.reader.get_pool_decimals(&pool_name).await?;
+
     // Parse start_time and end_time
     let end_time = params.end_time();
     let start_time = params
         .start_time()
         .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
 
-    // Parse limit (default to 1 if not provided)
-    let limit = params.limit();
-
-    // Parse optional filters for balance managers
-    let maker_balance_manager_filter = params.get("maker_balance_manager_id").cloned();
-    let taker_balance_manager_filter = params.get("taker_balance_manager_id").cloned();
-
     let base_decimals = base_decimals as u8;
     let quote_decimals = quote_decimals as u8;
 
-    let trades = state
-        .reader
-        .get_orders(
-            pool_name,
-            pool_id,
-            start_time,
-            end_time,
-            limit,
-            maker_balance_manager_filter,
-            taker_balance_manager_filter,
-        )
-        .await?;
+    let query = schema::order_fills::table
+        .filter(schema::order_fills::pool_id.eq(pool_id))
+        .filter(schema::order_fills::checkpoint_timestamp_ms.between(start_time, end_time));
+
+    let full_query = query.select(
+      (
+        schema::order_fills::base_quantity,
+        schema::order_fills::quote_quantity,
+      )  
+    );
+
+    let res: Vec<(i64, i64)> = state.reader.results(full_query).await?;
+    let total_trades = res.len();
+
+    if total_trades == 0 {
+        return Ok(Json(
+            HashMap::from([
+                ("avg_base_volume".to_string(), Value::from(0)),
+                ("avg_quote_volume".to_string(), Value::from(0)),
+            ])
+        ))
+    }
+
+    let (total_base, total_quote) = res
+        .iter()
+        .fold(
+            (0, 0), 
+            |(base_acc, quote_acc), (base_e, quote_e)| (base_acc + base_e, quote_acc + quote_e)
+        );
+
+    let mean_base: f64 = (total_base as f64) / (total_trades as f64);
+    let mean_quote: f64 = (total_quote as f64) / (total_trades as f64);
 
     // Conversion factors for decimals
-    let base_factor = (10i64).pow(base_decimals as u32);
-    let quote_factor = (10i64).pow(quote_decimals as u32);
+    let base_factor = (10f64).powf(base_decimals.into());
+    let quote_factor = (10f64).powf(quote_decimals.into());
 
-    let means = trades
-        .into_iter()
-        .map(|(_, _, _, base_quantity, quote_quantity, _, _, _, _)| {
-            (base_quantity / base_factor, quote_quantity / quote_factor)
-        });
-
-    let vols_base: Vec<i64> = means.clone().into_iter().map(|(b, _)| b).collect();
-    let vols_quote: Vec<i64> = means.into_iter().map(|(_, q)| q).collect();
-
-    let avg_base = if vols_base.len() != 0 {
-        vols_base.clone().into_iter().sum::<i64>() / (vols_base.len() as i64)
-    } else {
-        0
-    };
-
-    let avg_quote = if vols_quote.len() != 0 {
-        vols_quote.clone().into_iter().sum::<i64>() / (vols_quote.len() as i64)
-    } else {
-        0
-    };
-
+    let mean_base_scaled = mean_base / base_factor;
+    let mean_quote_scaled = mean_quote / quote_factor;
+    
     let data = HashMap::from([
-        ("avg_base_volume".to_string(), Value::from(avg_base)),
-        ("avg_quote_volume".to_string(), Value::from(avg_quote)),
+        ("avg_base_volume".to_string(), Value::from(mean_base_scaled)),
+        ("avg_quote_volume".to_string(), Value::from(mean_quote_scaled)),
     ]);
 
     Ok(Json(data))
