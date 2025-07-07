@@ -1,9 +1,15 @@
 pub mod middleware;
 
 use prometheus::{
-    register_histogram_vec_with_registry, register_histogram_with_registry,
-    register_int_counter_vec_with_registry, register_int_counter_with_registry, Histogram,
-    HistogramVec, IntCounter, IntCounterVec, Registry,
+    register_histogram_vec_with_registry,
+    register_histogram_with_registry,
+    register_int_counter_vec_with_registry,
+    register_int_counter_with_registry,
+    Histogram,
+    HistogramVec,
+    IntCounter,
+    IntCounterVec,
+    Registry,
 };
 use std::sync::Arc;
 
@@ -33,53 +39,49 @@ impl RpcMetrics {
                 "db_latency",
                 "Time taken by the database to respond to queries",
                 LATENCY_SEC_BUCKETS.to_vec(),
-                registry,
+                registry
             ).unwrap(),
 
             db_requests_succeeded: register_int_counter_with_registry!(
                 "db_requests_succeeded",
                 "Number of database requests that completed successfully",
-                registry,
+                registry
             ).unwrap(),
 
             db_requests_failed: register_int_counter_with_registry!(
                 "db_requests_failed",
                 "Number of database requests that completed with an error",
-                registry,
+                registry
             ).unwrap(),
 
             request_latency: register_histogram_vec_with_registry!(
-                "deepbook_api_request_latency",
-                "Time taken to respond to Deepbook API requests, by method",
+                "deeplook_api_request_latency",
+                "Time taken to respond to Deeplook API requests, by method",
                 &["method"],
                 LATENCY_SEC_BUCKETS.to_vec(),
                 registry
-            )
-                .unwrap(),
+            ).unwrap(),
 
             requests_received: register_int_counter_vec_with_registry!(
-                "deepbook_api_requests_received",
-                "Number of requests initiated for each Deepbook API method",
+                "deeplook_api_requests_received",
+                "Number of requests initiated for each Deeplook API method",
                 &["method"],
                 registry
-            )
-                .unwrap(),
+            ).unwrap(),
 
             requests_succeeded: register_int_counter_vec_with_registry!(
-                "deepbook_api_requests_succeeded",
-                "Number of requests that completed successfully for each Deepbook API method",
+                "deeplook_api_requests_succeeded",
+                "Number of requests that completed successfully for each Deeplook API method",
                 &["method"],
                 registry
-            )
-                .unwrap(),
+            ).unwrap(),
 
             requests_failed: register_int_counter_vec_with_registry!(
-                "deepbook_api_requests_failed",
-                "Number of requests that completed with an error for each Deepbook API method, by error code",
+                "deeplook_api_requests_failed",
+                "Number of requests that completed with an error for each Deeplook API method, by error code",
                 &["method", "code"],
                 registry
-            )
-                .unwrap(),
+            ).unwrap(),
         })
     }
 }

@@ -1,7 +1,7 @@
 [package]
-name = "deepbook-server"
+name = "deeplook-server"
 version = "0.1.0"
-authors = ["Mysten Labs <build@mystenlabs.com>"]
+authors = ["ChainsomeLabs"]
 license = "Apache-2.0"
 publish = false
 edition = "2021"
@@ -9,7 +9,7 @@ edition = "2021"
 [dependencies]
 bigdecimal.workspace = true
 chrono.workspace = true
-deepbook-schema = { path = "../schema" }
+deeplook-schema = { path = "../schema" }
 tokio.workspace = true
 futures = "0.3.31"
 clap = { workspace = true, features = ["env"] }
@@ -37,5 +37,5 @@ tower-http = { version = "0.5", features = ["cors"] }
 sui-sdk = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
 
 [[bin]]
-name = "deepbook-server"
+name = "deeplook-server"
 path = "src/main.rs"

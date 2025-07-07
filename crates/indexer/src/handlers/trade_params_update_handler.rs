@@ -1,18 +1,18 @@
-use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
+use crate::handlers::{ is_deepbook_tx, try_extract_move_call_package };
 use crate::models::deepbook::governance::TradeParamsUpdateEvent;
 use crate::models::deepbook::pool;
 use crate::utils::ms_to_secs;
-use crate::DeepbookEnv;
+use crate::DeeplookEnv;
 use async_trait::async_trait;
-use deepbook_schema::models::TradeParamsUpdate;
-use deepbook_schema::schema::trade_params_update;
+use deeplook_schema::models::TradeParamsUpdate;
+use deeplook_schema::schema::trade_params_update;
 use diesel_async::RunQueryDsl;
 use move_core_types::account_address::AccountAddress;
 use move_core_types::language_storage::StructTag;
 use std::sync::Arc;
 use sui_indexer_alt_framework::pipeline::concurrent::Handler;
 use sui_indexer_alt_framework::pipeline::Processor;
-use sui_pg_db::{Connection, Db};
+use sui_pg_db::{ Connection, Db };
 use sui_types::full_checkpoint_content::CheckpointData;
 use tracing::debug;
 
@@ -21,7 +21,7 @@ pub struct TradeParamsUpdateHandler {
 }
 
 impl TradeParamsUpdateHandler {
-    pub fn new(env: DeepbookEnv) -> Self {
+    pub fn new(env: DeeplookEnv) -> Self {
         Self {
             event_type: env.trade_params_update_event_type(),
         }
@@ -88,12 +88,14 @@ impl Handler for TradeParamsUpdateHandler {
 
     async fn commit<'a>(
         values: &[Self::Value],
-        conn: &mut Connection<'a>,
+        conn: &mut Connection<'a>
     ) -> anyhow::Result<usize> {
-        Ok(diesel::insert_into(trade_params_update::table)
-            .values(values)
-            .on_conflict_do_nothing()
-            .execute(conn)
-            .await?)
+        Ok(
+            diesel
+                ::insert_into(trade_params_update::table)
+                .values(values)
+                .on_conflict_do_nothing()
+                .execute(conn).await?
+        )
     }
 }

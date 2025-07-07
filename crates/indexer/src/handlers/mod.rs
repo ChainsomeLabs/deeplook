@@ -3,7 +3,7 @@ use move_core_types::language_storage::StructTag as MoveStructTag;
 use std::str::FromStr;
 use sui_sdk_types::StructTag;
 use sui_types::full_checkpoint_content::CheckpointTransaction;
-use sui_types::transaction::{Command, TransactionDataAPI};
+use sui_types::transaction::{ Command, TransactionDataAPI };
 
 pub mod balances_handler;
 pub mod flash_loan_handler;
@@ -16,8 +16,9 @@ pub mod stakes_handler;
 pub mod trade_params_update_handler;
 pub mod vote_handler;
 
-const DEEPBOOK_PKG_ADDRESS: AccountAddress =
-    AccountAddress::new(*crate::models::deepbook::registry::PACKAGE_ID.inner());
+const DEEPBOOK_PKG_ADDRESS: AccountAddress = AccountAddress::new(
+    *crate::models::deepbook::registry::PACKAGE_ID.inner()
+);
 
 // Convert rust sdk struct tag to move struct tag.
 pub(crate) fn convert_struct_tag(tag: StructTag) -> MoveStructTag {
