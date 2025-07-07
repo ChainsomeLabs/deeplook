@@ -1,20 +1,18 @@
 use chrono::DateTime;
 use serde_json::Value;
-use url::Url;
 use std::{collections::HashMap, i64, sync::Arc};
+use url::Url;
 
+use std::time::{SystemTime, UNIX_EPOCH};
+use sui_json_rpc_types::{SuiObjectData, SuiObjectDataOptions, SuiObjectResponse};
 use sui_sdk::SuiClientBuilder;
-use sui_json_rpc_types::{ SuiObjectData, SuiObjectDataOptions, SuiObjectResponse };
-use std::time::{ SystemTime, UNIX_EPOCH };
 use sui_types::{
-    base_types::{ ObjectID, ObjectRef, SuiAddress },
+    base_types::{ObjectID, ObjectRef, SuiAddress},
     programmable_transaction_builder::ProgrammableTransactionBuilder,
-    transaction::{ Argument, CallArg, Command, ObjectArg, ProgrammableMoveCall, TransactionKind },
+    transaction::{Argument, CallArg, Command, ObjectArg, ProgrammableMoveCall, TransactionKind},
 };
 
-use crate::server::{
-    parse_type_input, DEEPBOOK_PACKAGE_ID, LEVEL2_FUNCTION, LEVEL2_MODULE
-};
+use crate::server::{parse_type_input, DEEPBOOK_PACKAGE_ID, LEVEL2_FUNCTION, LEVEL2_MODULE};
 
 use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 
@@ -122,31 +120,26 @@ pub async fn avg_trade_size(
         .filter(schema::order_fills::pool_id.eq(pool_id))
         .filter(schema::order_fills::checkpoint_timestamp_ms.between(start_time, end_time));
 
-    let full_query = query.select(
-      (
+    let full_query = query.select((
         schema::order_fills::base_quantity,
         schema::order_fills::quote_quantity,
-      )  
-    );
+    ));
 
     let res: Vec<(i64, i64)> = state.reader.results(full_query).await?;
     let total_trades = res.len();
 
     if total_trades == 0 {
-        return Ok(Json(
-            HashMap::from([
-                ("avg_base_volume".to_string(), Value::from(0)),
-                ("avg_quote_volume".to_string(), Value::from(0)),
-            ])
-        ))
+        return Ok(Json(HashMap::from([
+            ("avg_base_volume".to_string(), Value::from(0)),
+            ("avg_quote_volume".to_string(), Value::from(0)),
+        ])));
     }
 
     let (total_base, total_quote) = res
         .iter()
-        .fold(
-            (0, 0), 
-            |(base_acc, quote_acc), (base_e, quote_e)| (base_acc + base_e, quote_acc + quote_e)
-        );
+        .fold((0, 0), |(base_acc, quote_acc), (base_e, quote_e)| {
+            (base_acc + base_e, quote_acc + quote_e)
+        });
 
     let mean_base: f64 = (total_base as f64) / (total_trades as f64);
     let mean_quote: f64 = (total_quote as f64) / (total_trades as f64);
@@ -157,10 +150,13 @@ pub async fn avg_trade_size(
 
     let mean_base_scaled = mean_base / base_factor;
     let mean_quote_scaled = mean_quote / quote_factor;
-    
+
     let data = HashMap::from([
         ("avg_base_volume".to_string(), Value::from(mean_base_scaled)),
-        ("avg_quote_volume".to_string(), Value::from(mean_quote_scaled)),
+        (
+            "avg_quote_volume".to_string(),
+            Value::from(mean_quote_scaled),
+        ),
     ]);
 
     Ok(Json(data))
@@ -179,7 +175,6 @@ pub async fn avg_duration_between_trades(
         .start_time()
         .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
 
-
     let trades = state
         .reader
         .get_orders(
@@ -195,25 +190,13 @@ pub async fn avg_duration_between_trades(
 
     let timestamps: Vec<i64> = trades
         .into_iter()
-        .map(
-            |(
-                _,
-                _,
-                _,
-                _, 
-                _, 
-                timestamp,
-                _,
-                _,
-                _,
-            )| { timestamp },
-        )
+        .map(|(_, _, _, _, _, timestamp, _, _, _)| timestamp)
         .rev()
         .collect();
 
     let diffs: Vec<i64> = timestamps.windows(2).map(|w| w[1] - w[0]).collect();
 
-    let avg_diff = diffs.iter().sum::<i64>() / diffs.len() as i64;
+    let avg_diff = diffs.iter().sum::<i64>() / (diffs.len() as i64);
 
     let data = Value::from(avg_diff);
 
@@ -246,27 +229,24 @@ pub async fn get_vwap(
             None,
         )
         .await?;
-    
+
     // Conversion factors for decimals
     let base_factor = (10u64).pow(base_decimals as u32);
-    let price_factor = (10u64).pow(
-        (9 - base_decimals + quote_decimals) as u32
-    );
+    let price_factor = (10u64).pow((9 - base_decimals + quote_decimals) as u32);
 
     let mut total_price_qty: f64 = 0.0;
     let mut total_qty: f64 = 0.0;
 
     for (_, _, price, base_quantity, _, _, _, _, _) in trades {
-
-        let scaled_price = price as f64 / price_factor as f64;
-        let scaled_base_quantity = base_quantity as f64 / base_factor as f64;
+        let scaled_price = (price as f64) / (price_factor as f64);
+        let scaled_base_quantity = (base_quantity as f64) / (base_factor as f64);
 
         total_price_qty += scaled_price * scaled_base_quantity;
         total_qty += scaled_base_quantity;
     }
 
     let vwap = if total_qty > 0.0 {
-        Some(total_price_qty as f64 / total_qty as f64)
+        Some((total_price_qty as f64) / (total_qty as f64))
     } else {
         None
     };
@@ -274,11 +254,10 @@ pub async fn get_vwap(
     Ok(Json(vwap))
 }
 
-
 pub async fn orderbook_imbalance(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
-    State((state, rpc_url)): State<(Arc<AppState>, Url)>
+    State((state, rpc_url)): State<(Arc<AppState>, Url)>,
 ) -> Result<Json<HashMap<String, Value>>, DeepBookError> {
     let depth = params
         .get("depth")
@@ -291,11 +270,10 @@ pub async fn orderbook_imbalance(
 
     if let Some(depth) = depth {
         if depth == 1 {
-            return Err(
-                DeepBookError::InternalError(
-                    "Depth cannot be 1. Use a value greater than 1 or 0 for the entire orderbook".to_string()
-                )
-            );
+            return Err(DeepBookError::InternalError(
+                "Depth cannot be 1. Use a value greater than 1 or 0 for the entire orderbook"
+                    .to_string(),
+            ));
         }
     }
 
@@ -309,16 +287,18 @@ pub async fn orderbook_imbalance(
 
     if let Some(level) = level {
         if !(1..=2).contains(&level) {
-            return Err(DeepBookError::InternalError("Level must be 1 or 2".to_string()));
+            return Err(DeepBookError::InternalError(
+                "Level must be 1 or 2".to_string(),
+            ));
         }
     }
 
     let ticks_from_mid = match (depth, level) {
         (Some(_), Some(1)) => 1u64, // Depth + Level 1 → Best bid and ask
         (Some(depth), Some(2)) | (Some(depth), None) => depth / 2, // Depth + Level 2 → Use depth
-        (None, Some(1)) => 1u64, // Only Level 1 → Best bid and ask
+        (None, Some(1)) => 1u64,    // Only Level 1 → Best bid and ask
         (None, Some(2)) | (None, None) => 100u64, // Level 2 or default → 100 ticks
-        _ => 100u64, // Fallback to default
+        _ => 100u64,                // Fallback to default
     };
 
     // Fetch the pool data from the `pools` table
@@ -343,43 +323,43 @@ pub async fn orderbook_imbalance(
 
     let pool_object: SuiObjectResponse = sui_client
         .read_api()
-        .get_object_with_options(pool_address, SuiObjectDataOptions::full_content()).await?;
-    let pool_data: &SuiObjectData = pool_object.data
-        .as_ref()
-        .ok_or(
-            DeepBookError::InternalError(
-                format!("Missing data in pool object response for '{}'", pool_name)
-            )
-        )?;
+        .get_object_with_options(pool_address, SuiObjectDataOptions::full_content())
+        .await?;
+    let pool_data: &SuiObjectData =
+        pool_object
+            .data
+            .as_ref()
+            .ok_or(DeepBookError::InternalError(format!(
+                "Missing data in pool object response for '{}'",
+                pool_name
+            )))?;
     let pool_object_ref: ObjectRef = (pool_data.object_id, pool_data.version, pool_data.digest);
 
     let pool_input = CallArg::Object(ObjectArg::ImmOrOwnedObject(pool_object_ref));
     ptb.input(pool_input)?;
 
-    let input_argument = CallArg::Pure(
-        bcs
-            ::to_bytes(&ticks_from_mid)
-            .map_err(|_| {
-                DeepBookError::InternalError("Failed to serialize ticks_from_mid".to_string())
-            })?
-    );
+    let input_argument = CallArg::Pure(bcs::to_bytes(&ticks_from_mid).map_err(|_| {
+        DeepBookError::InternalError("Failed to serialize ticks_from_mid".to_string())
+    })?);
     ptb.input(input_argument)?;
 
     let sui_clock_object_id = ObjectID::from_hex_literal(
-        "0x0000000000000000000000000000000000000000000000000000000000000006"
+        "0x0000000000000000000000000000000000000000000000000000000000000006",
     )?;
     let sui_clock_object: SuiObjectResponse = sui_client
         .read_api()
-        .get_object_with_options(sui_clock_object_id, SuiObjectDataOptions::full_content()).await?;
-    let clock_data: &SuiObjectData = sui_clock_object.data
-        .as_ref()
-        .ok_or(DeepBookError::InternalError("Missing data in clock object response".to_string()))?;
+        .get_object_with_options(sui_clock_object_id, SuiObjectDataOptions::full_content())
+        .await?;
+    let clock_data: &SuiObjectData =
+        sui_clock_object
+            .data
+            .as_ref()
+            .ok_or(DeepBookError::InternalError(
+                "Missing data in clock object response".to_string(),
+            ))?;
 
-    let sui_clock_object_ref: ObjectRef = (
-        clock_data.object_id,
-        clock_data.version,
-        clock_data.digest,
-    );
+    let sui_clock_object_ref: ObjectRef =
+        (clock_data.object_id, clock_data.version, clock_data.digest);
 
     let clock_input = CallArg::Object(ObjectArg::ImmOrOwnedObject(sui_clock_object_ref));
     ptb.input(clock_input)?;
@@ -387,75 +367,87 @@ pub async fn orderbook_imbalance(
     let base_coin_type = parse_type_input(&base_asset_id)?;
     let quote_coin_type = parse_type_input(&quote_asset_id)?;
 
-    let package = ObjectID::from_hex_literal(DEEPBOOK_PACKAGE_ID).map_err(|e|
-        DeepBookError::InternalError(format!("Invalid pool ID: {}", e))
-    )?;
+    let package = ObjectID::from_hex_literal(DEEPBOOK_PACKAGE_ID)
+        .map_err(|e| DeepBookError::InternalError(format!("Invalid pool ID: {}", e)))?;
     let module = LEVEL2_MODULE.to_string();
     let function = LEVEL2_FUNCTION.to_string();
 
-    ptb.command(
-        Command::MoveCall(
-            Box::new(ProgrammableMoveCall {
-                package,
-                module,
-                function,
-                type_arguments: vec![base_coin_type, quote_coin_type],
-                arguments: vec![Argument::Input(0), Argument::Input(1), Argument::Input(2)],
-            })
-        )
-    );
+    ptb.command(Command::MoveCall(Box::new(ProgrammableMoveCall {
+        package,
+        module,
+        function,
+        type_arguments: vec![base_coin_type, quote_coin_type],
+        arguments: vec![Argument::Input(0), Argument::Input(1), Argument::Input(2)],
+    })));
 
     let builder = ptb.finish();
     let tx = TransactionKind::ProgrammableTransaction(builder);
 
     let result = sui_client
         .read_api()
-        .dev_inspect_transaction_block(SuiAddress::default(), tx, None, None, None).await?;
+        .dev_inspect_transaction_block(SuiAddress::default(), tx, None, None, None)
+        .await?;
 
-    let mut binding = result.results.ok_or(
-        DeepBookError::InternalError("No results from dev_inspect_transaction_block".to_string())
-    )?;
+    let mut binding = result.results.ok_or(DeepBookError::InternalError(
+        "No results from dev_inspect_transaction_block".to_string(),
+    ))?;
     let bid_prices = &binding
         .first_mut()
-        .ok_or(DeepBookError::InternalError("No return values for bid prices".to_string()))?
-        .return_values.first_mut()
-        .ok_or(DeepBookError::InternalError("No bid price data found".to_string()))?.0;
-    let bid_parsed_prices: Vec<u64> = bcs
-        ::from_bytes(bid_prices)
-        .map_err(|_| {
-            DeepBookError::InternalError("Failed to deserialize bid prices".to_string())
-        })?;
+        .ok_or(DeepBookError::InternalError(
+            "No return values for bid prices".to_string(),
+        ))?
+        .return_values
+        .first_mut()
+        .ok_or(DeepBookError::InternalError(
+            "No bid price data found".to_string(),
+        ))?
+        .0;
+    let bid_parsed_prices: Vec<u64> = bcs::from_bytes(bid_prices).map_err(|_| {
+        DeepBookError::InternalError("Failed to deserialize bid prices".to_string())
+    })?;
     let bid_quantities = &binding
         .first_mut()
-        .ok_or(DeepBookError::InternalError("No return values for bid quantities".to_string()))?
-        .return_values.get(1)
-        .ok_or(DeepBookError::InternalError("No bid quantity data found".to_string()))?.0;
-    let bid_parsed_quantities: Vec<u64> = bcs
-        ::from_bytes(bid_quantities)
-        .map_err(|_| {
-            DeepBookError::InternalError("Failed to deserialize bid quantities".to_string())
-        })?;
+        .ok_or(DeepBookError::InternalError(
+            "No return values for bid quantities".to_string(),
+        ))?
+        .return_values
+        .get(1)
+        .ok_or(DeepBookError::InternalError(
+            "No bid quantity data found".to_string(),
+        ))?
+        .0;
+    let bid_parsed_quantities: Vec<u64> = bcs::from_bytes(bid_quantities).map_err(|_| {
+        DeepBookError::InternalError("Failed to deserialize bid quantities".to_string())
+    })?;
 
     let ask_prices = &binding
         .first_mut()
-        .ok_or(DeepBookError::InternalError("No return values for ask prices".to_string()))?
-        .return_values.get(2)
-        .ok_or(DeepBookError::InternalError("No ask price data found".to_string()))?.0;
-    let ask_parsed_prices: Vec<u64> = bcs
-        ::from_bytes(ask_prices)
-        .map_err(|_| {
-            DeepBookError::InternalError("Failed to deserialize ask prices".to_string())
-        })?;
+        .ok_or(DeepBookError::InternalError(
+            "No return values for ask prices".to_string(),
+        ))?
+        .return_values
+        .get(2)
+        .ok_or(DeepBookError::InternalError(
+            "No ask price data found".to_string(),
+        ))?
+        .0;
+    let ask_parsed_prices: Vec<u64> = bcs::from_bytes(ask_prices).map_err(|_| {
+        DeepBookError::InternalError("Failed to deserialize ask prices".to_string())
+    })?;
     let ask_quantities = &binding
         .first_mut()
-        .ok_or(DeepBookError::InternalError("No return values for ask quantities".to_string()))?
-        .return_values.get(3)
-        .ok_or(DeepBookError::InternalError("No ask quantity data found".to_string()))?.0;
-    let ask_parsed_quantities: Vec<u64> = bcs
-        ::from_bytes(ask_quantities)
-        .map_err(|_| {
-            DeepBookError::InternalError("Failed to deserialize ask quantities".to_string())
-        })?;
+        .ok_or(DeepBookError::InternalError(
+            "No return values for ask quantities".to_string(),
+        ))?
+        .return_values
+        .get(3)
+        .ok_or(DeepBookError::InternalError(
+            "No ask quantity data found".to_string(),
+        ))?
+        .0;
+    let ask_parsed_quantities: Vec<u64> = bcs::from_bytes(ask_quantities).map_err(|_| {
+        DeepBookError::InternalError("Failed to deserialize ask quantities".to_string())
+    })?;
 
     let mut result = HashMap::new();
 
@@ -472,12 +464,10 @@ pub async fn orderbook_imbalance(
         .map(|(price, quantity)| {
             let price_factor = (10u64).pow((9 - base_decimals + quote_decimals).into());
             let quantity_factor = (10u64).pow(base_decimals.into());
-            Value::Array(
-                vec![
-                    Value::from(((price as f64) / (price_factor as f64)).to_string()),
-                    Value::from(((quantity as f64) / (quantity_factor as f64)).to_string())
-                ]
-            )
+            Value::Array(vec![
+                Value::from(((price as f64) / (price_factor as f64)).to_string()),
+                Value::from(((quantity as f64) / (quantity_factor as f64)).to_string()),
+            ])
         })
         .collect();
 
@@ -488,18 +478,16 @@ pub async fn orderbook_imbalance(
         .map(|(price, quantity)| {
             let price_factor = (10u64).pow((9 - base_decimals + quote_decimals).into());
             let quantity_factor = (10u64).pow(base_decimals.into());
-            Value::Array(
-                vec![
-                    Value::from(((price as f64) / (price_factor as f64)).to_string()),
-                    Value::from(((quantity as f64) / (quantity_factor as f64)).to_string())
-                ]
-            )
+            Value::Array(vec![
+                Value::from(((price as f64) / (price_factor as f64)).to_string()),
+                Value::from(((quantity as f64) / (quantity_factor as f64)).to_string()),
+            ])
         })
         .collect();
 
     let bid_volume = sum_quantities(&bids);
     let ask_volume = sum_quantities(&asks);
-    let obi = if (bid_volume + ask_volume) > 0.0 {
+    let obi = if bid_volume + ask_volume > 0.0 {
         Some((bid_volume - ask_volume) / (bid_volume + ask_volume))
     } else {
         None
@@ -510,15 +498,20 @@ pub async fn orderbook_imbalance(
 }
 
 fn sum_quantities(orderbook_side: &[Value]) -> f64 {
-    orderbook_side.iter().filter_map(|entry| {
-        if let Value::Array(arr) = entry {
-            if arr.len() == 2 {
-                arr[1].as_str().and_then(|qty_str| qty_str.parse::<f64>().ok())
+    orderbook_side
+        .iter()
+        .filter_map(|entry| {
+            if let Value::Array(arr) = entry {
+                if arr.len() == 2 {
+                    arr[1]
+                        .as_str()
+                        .and_then(|qty_str| qty_str.parse::<f64>().ok())
+                } else {
+                    None
+                }
             } else {
                 None
             }
-        } else {
-            None
-        }
-    }).sum()
+        })
+        .sum()
 }

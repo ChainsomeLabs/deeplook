@@ -1,5 +1,6 @@
 use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 use crate::models::deepbook::balance_manager::BalanceEvent;
+use crate::utils::ms_to_secs;
 use crate::DeepbookEnv;
 use async_trait::async_trait;
 use deepbook_schema::models::Balances;
@@ -59,6 +60,7 @@ impl Processor for BalancesHandler {
                             sender: tx.transaction.sender_address().to_string(),
                             checkpoint,
                             checkpoint_timestamp_ms,
+                            timestamp: ms_to_secs(checkpoint_timestamp_ms),
                             package: package.clone(),
                             balance_manager_id: event.balance_manager_id.to_string(),
                             asset: event.asset.to_string(),

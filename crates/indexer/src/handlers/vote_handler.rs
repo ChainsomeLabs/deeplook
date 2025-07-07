@@ -1,5 +1,6 @@
 use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 use crate::models::deepbook::state::VoteEvent;
+use crate::utils::ms_to_secs;
 use crate::DeepbookEnv;
 use async_trait::async_trait;
 use deepbook_schema::models::Votes;
@@ -59,6 +60,7 @@ impl Processor for VotesHandler {
                             sender: tx.transaction.sender_address().to_string(),
                             checkpoint,
                             checkpoint_timestamp_ms,
+                            timestamp: ms_to_secs(checkpoint_timestamp_ms),
                             package: package.clone(),
                             pool_id: event.pool_id.to_string(),
                             balance_manager_id: event.balance_manager_id.to_string(),

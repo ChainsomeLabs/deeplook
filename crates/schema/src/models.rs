@@ -1,30 +1,19 @@
 use crate::schema::{
-    balances,
-    balances_summary,
-    flashloans,
-    order_fills,
-    order_updates,
-    pool_prices,
-    pools,
-    proposals,
-    rebates,
-    stakes,
-    sui_error_transactions,
-    trade_params_update,
-    votes,
+    balances, balances_summary, flashloans, order_fills, order_updates, pool_prices, pools,
+    proposals, rebates, stakes, sui_error_transactions, trade_params_update, votes,
 };
 use crate::view::ohlcv_1min;
+use bigdecimal::BigDecimal;
 use chrono::NaiveDateTime;
 use diesel::deserialize::FromSql;
-use diesel::pg::{ Pg, PgValue };
-use diesel::serialize::{ Output, ToSql };
+use diesel::pg::{Pg, PgValue};
+use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
-use diesel::{ AsExpression, Identifiable, Insertable, Queryable, QueryableByName, Selectable };
+use diesel::{AsExpression, Identifiable, Insertable, Queryable, QueryableByName, Selectable};
 use serde::Serialize;
 use std::str::FromStr;
-use strum_macros::{ AsRefStr, EnumString };
+use strum_macros::{AsRefStr, EnumString};
 use sui_field_count::FieldCount;
-use bigdecimal::BigDecimal;
 
 #[derive(Queryable, Selectable, Insertable, Identifiable, Debug, FieldCount)]
 #[diesel(table_name = order_updates, primary_key(event_digest))]
@@ -34,6 +23,7 @@ pub struct OrderUpdate {
     pub sender: String,
     pub checkpoint: i64,
     pub checkpoint_timestamp_ms: i64,
+    pub timestamp: NaiveDateTime,
     pub package: String,
     pub status: OrderUpdateStatus,
     pub pool_id: String,
@@ -79,6 +69,7 @@ pub struct OrderFill {
     pub sender: String,
     pub checkpoint: i64,
     pub checkpoint_timestamp_ms: i64,
+    pub timestamp: NaiveDateTime,
     pub package: String,
     pub pool_id: String,
     pub maker_order_id: String, // u128
@@ -122,6 +113,7 @@ pub struct Flashloan {
     pub sender: String,
     pub checkpoint: i64,
     pub checkpoint_timestamp_ms: i64,
+    pub timestamp: NaiveDateTime,
     pub package: String,
     pub pool_id: String,
     pub borrow_quantity: i64,
@@ -137,6 +129,7 @@ pub struct PoolPrice {
     pub sender: String,
     pub checkpoint: i64,
     pub checkpoint_timestamp_ms: i64,
+    pub timestamp: NaiveDateTime,
     pub package: String,
     pub target_pool: String,
     pub reference_pool: String,
@@ -151,6 +144,7 @@ pub struct Balances {
     pub sender: String,
     pub checkpoint: i64,
     pub checkpoint_timestamp_ms: i64,
+    pub timestamp: NaiveDateTime,
     pub package: String,
     pub balance_manager_id: String,
     pub asset: String,
@@ -166,6 +160,7 @@ pub struct Proposals {
     pub sender: String,
     pub checkpoint: i64,
     pub checkpoint_timestamp_ms: i64,
+    pub timestamp: NaiveDateTime,
     pub package: String,
     pub pool_id: String,
     pub balance_manager_id: String,
@@ -183,6 +178,7 @@ pub struct Rebates {
     pub sender: String,
     pub checkpoint: i64,
     pub checkpoint_timestamp_ms: i64,
+    pub timestamp: NaiveDateTime,
     pub package: String,
     pub pool_id: String,
     pub balance_manager_id: String,
@@ -198,6 +194,7 @@ pub struct Stakes {
     pub sender: String,
     pub checkpoint: i64,
     pub checkpoint_timestamp_ms: i64,
+    pub timestamp: NaiveDateTime,
     pub package: String,
     pub pool_id: String,
     pub balance_manager_id: String,
@@ -214,6 +211,7 @@ pub struct TradeParamsUpdate {
     pub sender: String,
     pub checkpoint: i64,
     pub checkpoint_timestamp_ms: i64,
+    pub timestamp: NaiveDateTime,
     pub package: String,
     pub pool_id: String,
     pub taker_fee: i64,
@@ -229,6 +227,7 @@ pub struct Votes {
     pub sender: String,
     pub checkpoint: i64,
     pub checkpoint_timestamp_ms: i64,
+    pub timestamp: NaiveDateTime,
     pub package: String,
     pub pool_id: String,
     pub balance_manager_id: String,
