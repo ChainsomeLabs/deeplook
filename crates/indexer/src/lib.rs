@@ -87,7 +87,10 @@ impl DeeplookEnv {
     event_type_fn!(order_canceled_event_type, order::OrderCanceled);
     event_type_fn!(order_expired_event_type, order_info::OrderExpired);
     event_type_fn!(vote_event_type, state::VoteEvent);
-    event_type_fn!(trade_params_update_event_type, governance::TradeParamsUpdateEvent);
+    event_type_fn!(
+        trade_params_update_event_type,
+        governance::TradeParamsUpdateEvent
+    );
     event_type_fn!(stake_event_type, state::StakeEvent);
     event_type_fn!(rebate_event_type, state::RebateEvent);
     event_type_fn!(proposal_event_type, state::ProposalEvent);

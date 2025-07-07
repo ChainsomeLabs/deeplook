@@ -1,4 +1,4 @@
-use crate::handlers::{ is_deepbook_tx, try_extract_move_call_package };
+use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 use crate::models::deepbook::governance::TradeParamsUpdateEvent;
 use crate::models::deepbook::pool;
 use crate::utils::ms_to_secs;
@@ -12,7 +12,7 @@ use move_core_types::language_storage::StructTag;
 use std::sync::Arc;
 use sui_indexer_alt_framework::pipeline::concurrent::Handler;
 use sui_indexer_alt_framework::pipeline::Processor;
-use sui_pg_db::{ Connection, Db };
+use sui_pg_db::{Connection, Db};
 use sui_types::full_checkpoint_content::CheckpointData;
 use tracing::debug;
 
@@ -88,14 +88,12 @@ impl Handler for TradeParamsUpdateHandler {
 
     async fn commit<'a>(
         values: &[Self::Value],
-        conn: &mut Connection<'a>
+        conn: &mut Connection<'a>,
     ) -> anyhow::Result<usize> {
-        Ok(
-            diesel
-                ::insert_into(trade_params_update::table)
-                .values(values)
-                .on_conflict_do_nothing()
-                .execute(conn).await?
-        )
+        Ok(diesel::insert_into(trade_params_update::table)
+            .values(values)
+            .on_conflict_do_nothing()
+            .execute(conn)
+            .await?)
     }
 }
