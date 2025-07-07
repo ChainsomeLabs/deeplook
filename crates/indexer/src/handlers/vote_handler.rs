@@ -1,10 +1,10 @@
 use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 use crate::models::deepbook::state::VoteEvent;
 use crate::utils::ms_to_secs;
-use crate::DeepbookEnv;
+use crate::DeeplookEnv;
 use async_trait::async_trait;
-use deepbook_schema::models::Votes;
-use deepbook_schema::schema::votes;
+use deeplook_schema::models::Votes;
+use deeplook_schema::schema::votes;
 use diesel_async::RunQueryDsl;
 use move_core_types::language_storage::StructTag;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ pub struct VotesHandler {
 }
 
 impl VotesHandler {
-    pub fn new(env: DeepbookEnv) -> Self {
+    pub fn new(env: DeeplookEnv) -> Self {
         Self {
             event_type: env.vote_event_type(),
         }

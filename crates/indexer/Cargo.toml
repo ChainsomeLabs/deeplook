@@ -1,7 +1,7 @@
 [package]
-name = "deepbook-indexer"
+name = "deeplook-indexer"
 version = "0.1.0"
-authors = ["Mysten Labs <build@mystenlabs.com>"]
+authors = ["ChainsomeLabs"]
 license = "Apache-2.0"
 publish = false
 edition = "2021"
@@ -40,7 +40,7 @@ move-core-types.workspace = true
 telemetry-subscribers.workspace = true
 tokio-util.workspace = true
 
-deepbook-schema = { path = "../schema" }
+deeplook-schema = { path = "../schema" }
 
 [dev-dependencies]
 sui-storage = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
@@ -50,5 +50,5 @@ sqlx = { version = "0.8.3", features = ["runtime-tokio", "postgres", "chrono"] }
 fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto" }
 
 [[bin]]
-name = "deepbook-indexer"
+name = "deeplook-indexer"
 path = "src/main.rs"

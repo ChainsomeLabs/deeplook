@@ -9,8 +9,8 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use deepbook_schema::models::{BalancesSummary, OrderFill, Pools};
-use deepbook_schema::*;
+use deeplook_schema::models::{BalancesSummary, OrderFill, Pools};
+use deeplook_schema::*;
 use diesel::dsl::count_star;
 use diesel::dsl::{max, min};
 use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
@@ -113,7 +113,7 @@ pub async fn run_server(
     cancellation_token: CancellationToken,
     metrics_address: SocketAddr,
 ) -> Result<(), anyhow::Error> {
-    let registry = Registry::new_custom(Some("deepbook_api".into()), None)
+    let registry = Registry::new_custom(Some("deeplook_api".into()), None)
         .expect("Failed to create Prometheus registry.");
 
     let metrics = MetricsService::new(

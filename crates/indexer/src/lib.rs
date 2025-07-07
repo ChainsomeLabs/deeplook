@@ -11,13 +11,13 @@ pub const MAINNET_REMOTE_STORE_URL: &str = "https://checkpoints.mainnet.sui.io";
 pub const TESTNET_REMOTE_STORE_URL: &str = "https://checkpoints.testnet.sui.io";
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
-pub enum DeepbookEnv {
+pub enum DeeplookEnv {
     Mainnet,
     Testnet,
 }
 
 /// Generates a function that returns the `StructTag` for a given event type,
-/// switching between Mainnet and Testnet packages based on the `DeepbookEnv`.
+/// switching between Mainnet and Testnet packages based on the `DeeplookEnv`.
 ///
 /// # Arguments
 ///
@@ -27,7 +27,7 @@ pub enum DeepbookEnv {
 /// # Example
 ///
 /// ```rust
-/// //impl DeepbookEnv {
+/// //impl DeeplookEnv {
 /// //    event_type_fn!(balance_event_type, balance_manager::BalanceEvent);
 /// //}
 ///
@@ -35,11 +35,11 @@ pub enum DeepbookEnv {
 /// //
 /// // fn balance_event_type(&self) -> StructTag {
 /// //     match self {
-/// //         DeepbookEnv::Mainnet => {
+/// //         DeeplookEnv::Mainnet => {
 /// //             use models::deepbook::balance_manager::BalanceEvent as Event;
 /// //             convert_struct_tag(Event::struct_type())
 /// //         },
-/// //         DeepbookEnv::Testnet => {
+/// //         DeeplookEnv::Testnet => {
 /// //             use models::deepbook_testnet::balance_manager::BalanceEvent as Event;
 /// //             convert_struct_tag(Event::struct_type())
 /// //         }
@@ -56,11 +56,11 @@ macro_rules! event_type_fn {
         $(#[$meta])*
         fn $fn_name(&self) -> StructTag {
             match self {
-                DeepbookEnv::Mainnet => {
+                DeeplookEnv::Mainnet => {
                     use models::deepbook::$($path)::+ as Event;
                     convert_struct_tag(Event::struct_type())
                 },
-                DeepbookEnv::Testnet => {
+                DeeplookEnv::Testnet => {
                     use models::deepbook_testnet::$($path)::+ as Event;
                     convert_struct_tag(Event::struct_type())
                 }
@@ -69,11 +69,11 @@ macro_rules! event_type_fn {
     };
 }
 
-impl DeepbookEnv {
+impl DeeplookEnv {
     pub fn remote_store_url(&self) -> Url {
         let remote_store_url = match self {
-            DeepbookEnv::Mainnet => MAINNET_REMOTE_STORE_URL,
-            DeepbookEnv::Testnet => TESTNET_REMOTE_STORE_URL,
+            DeeplookEnv::Mainnet => MAINNET_REMOTE_STORE_URL,
+            DeeplookEnv::Testnet => TESTNET_REMOTE_STORE_URL,
         };
         // Safe to unwrap on verified static URLs
         Url::parse(remote_store_url).unwrap()

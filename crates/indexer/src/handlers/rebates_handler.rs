@@ -1,10 +1,10 @@
 use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 use crate::models::deepbook::state::RebateEvent;
 use crate::utils::ms_to_secs;
-use crate::DeepbookEnv;
+use crate::DeeplookEnv;
 use async_trait::async_trait;
-use deepbook_schema::models::Rebates;
-use deepbook_schema::schema::rebates;
+use deeplook_schema::models::Rebates;
+use deeplook_schema::schema::rebates;
 use diesel_async::RunQueryDsl;
 use move_core_types::language_storage::StructTag;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ pub struct RebatesHandler {
 }
 
 impl RebatesHandler {
-    pub fn new(env: DeepbookEnv) -> Self {
+    pub fn new(env: DeeplookEnv) -> Self {
         Self {
             event_type: env.rebate_event_type(),
         }

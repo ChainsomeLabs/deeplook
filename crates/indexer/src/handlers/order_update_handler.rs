@@ -2,9 +2,9 @@ use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 use crate::models::deepbook::order::{OrderCanceled, OrderModified};
 use crate::models::deepbook::order_info::{OrderExpired, OrderPlaced};
 use crate::utils::ms_to_secs;
-use crate::DeepbookEnv;
-use deepbook_schema::models::{OrderUpdate, OrderUpdateStatus};
-use deepbook_schema::schema::order_updates;
+use crate::DeeplookEnv;
+use deeplook_schema::models::{OrderUpdate, OrderUpdateStatus};
+use deeplook_schema::schema::order_updates;
 use diesel_async::RunQueryDsl;
 use move_core_types::language_storage::StructTag;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ pub struct OrderUpdateHandler {
 }
 
 impl OrderUpdateHandler {
-    pub fn new(env: DeepbookEnv) -> Self {
+    pub fn new(env: DeeplookEnv) -> Self {
         Self {
             order_placed_type: env.order_placed_event_type(),
             order_modified_type: env.order_modified_event_type(),

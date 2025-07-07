@@ -1985,7 +1985,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "deepbook-indexer"
+name = "deeplook-indexer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1993,7 +1993,7 @@ dependencies = [
  "bcs",
  "chrono",
  "clap",
- "deepbook-schema",
+ "deeplook-schema",
  "diesel",
  "diesel-async",
  "fastcrypto 0.1.9 (git+https://github.com/MystenLabs/fastcrypto)",
@@ -2020,7 +2020,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "deepbook-schema"
+name = "deeplook-schema"
 version = "0.1.0"
 dependencies = [
  "bigdecimal",
@@ -2034,7 +2034,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "deepbook-server"
+name = "deeplook-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -2043,7 +2043,7 @@ dependencies = [
  "bigdecimal",
  "chrono",
  "clap",
- "deepbook-schema",
+ "deeplook-schema",
  "diesel",
  "diesel-async",
  "futures",

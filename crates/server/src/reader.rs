@@ -1,7 +1,7 @@
 use crate::error::DeepBookError;
 use crate::metrics::RpcMetrics;
-use deepbook_schema::models::{OrderFillSummary, Pools};
-use deepbook_schema::schema;
+use deeplook_schema::models::{OrderFillSummary, Pools};
+use deeplook_schema::schema;
 use diesel::deserialize::FromSqlRow;
 use diesel::dsl::sql;
 use diesel::expression::QueryMetadata;
@@ -32,7 +32,7 @@ impl Reader {
     ) -> Result<Self, anyhow::Error> {
         let db = Db::for_read(database_url, db_args).await?;
         registry.register(Box::new(DbConnectionStatsCollector::new(
-            Some("deepbook_api_db"),
+            Some("deeplook_api_db"),
             db.clone(),
         )))?;
 

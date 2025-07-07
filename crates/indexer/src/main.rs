@@ -1,17 +1,17 @@
 use anyhow::Context;
 use clap::Parser;
-use deepbook_indexer::handlers::balances_handler::BalancesHandler;
-use deepbook_indexer::handlers::flash_loan_handler::FlashLoanHandler;
-use deepbook_indexer::handlers::order_fill_handler::OrderFillHandler;
-use deepbook_indexer::handlers::order_update_handler::OrderUpdateHandler;
-use deepbook_indexer::handlers::pool_price_handler::PoolPriceHandler;
-use deepbook_indexer::handlers::proposals_handler::ProposalsHandler;
-use deepbook_indexer::handlers::rebates_handler::RebatesHandler;
-use deepbook_indexer::handlers::stakes_handler::StakesHandler;
-use deepbook_indexer::handlers::trade_params_update_handler::TradeParamsUpdateHandler;
-use deepbook_indexer::handlers::vote_handler::VotesHandler;
-use deepbook_indexer::DeepbookEnv;
-use deepbook_schema::MIGRATIONS;
+use deeplook_indexer::handlers::balances_handler::BalancesHandler;
+use deeplook_indexer::handlers::flash_loan_handler::FlashLoanHandler;
+use deeplook_indexer::handlers::order_fill_handler::OrderFillHandler;
+use deeplook_indexer::handlers::order_update_handler::OrderUpdateHandler;
+use deeplook_indexer::handlers::pool_price_handler::PoolPriceHandler;
+use deeplook_indexer::handlers::proposals_handler::ProposalsHandler;
+use deeplook_indexer::handlers::rebates_handler::RebatesHandler;
+use deeplook_indexer::handlers::stakes_handler::StakesHandler;
+use deeplook_indexer::handlers::trade_params_update_handler::TradeParamsUpdateHandler;
+use deeplook_indexer::handlers::vote_handler::VotesHandler;
+use deeplook_indexer::DeeplookEnv;
+use deeplook_schema::MIGRATIONS;
 use prometheus::Registry;
 use std::net::SocketAddr;
 use sui_indexer_alt_framework::ingestion::ClientArgs;
@@ -33,12 +33,12 @@ struct Args {
     #[clap(
         env,
         long,
-        default_value = "postgres://postgres:postgrespw@localhost:5432/deepbook"
+        default_value = "postgres://postgres:postgrespw@localhost:5432/deeplook"
     )]
     database_url: Url,
-    /// Deepbook environment, defaulted to SUI mainnet.
+    /// Deeplook environment, defaulted to SUI mainnet.
     #[clap(env, long)]
-    env: DeepbookEnv,
+    env: DeeplookEnv,
 }
 
 #[tokio::main]
@@ -56,7 +56,7 @@ async fn main() -> Result<(), anyhow::Error> {
     } = Args::parse();
 
     let cancel = CancellationToken::new();
-    let registry = Registry::new_custom(Some("deepbook".into()), None)
+    let registry = Registry::new_custom(Some("deeplook".into()), None)
         .context("Failed to create Prometheus registry.")?;
     let metrics = MetricsService::new(
         MetricsArgs { metrics_address },

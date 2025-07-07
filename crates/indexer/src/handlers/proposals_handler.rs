@@ -1,10 +1,10 @@
 use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 use crate::models::deepbook::state::ProposalEvent;
 use crate::utils::ms_to_secs;
-use crate::DeepbookEnv;
+use crate::DeeplookEnv;
 use async_trait::async_trait;
-use deepbook_schema::models::Proposals;
-use deepbook_schema::schema::proposals;
+use deeplook_schema::models::Proposals;
+use deeplook_schema::schema::proposals;
 use diesel_async::RunQueryDsl;
 use move_core_types::language_storage::StructTag;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ pub struct ProposalsHandler {
 }
 
 impl ProposalsHandler {
-    pub fn new(env: DeepbookEnv) -> Self {
+    pub fn new(env: DeeplookEnv) -> Self {
         Self {
             event_type: env.proposal_event_type(),
         }

@@ -1,10 +1,10 @@
 use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 use crate::models::deepbook::balance_manager::BalanceEvent;
 use crate::utils::ms_to_secs;
-use crate::DeepbookEnv;
+use crate::DeeplookEnv;
 use async_trait::async_trait;
-use deepbook_schema::models::Balances;
-use deepbook_schema::schema::balances;
+use deeplook_schema::models::Balances;
+use deeplook_schema::schema::balances;
 use diesel_async::RunQueryDsl;
 use move_core_types::language_storage::StructTag;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ pub struct BalancesHandler {
 }
 
 impl BalancesHandler {
-    pub fn new(env: DeepbookEnv) -> Self {
+    pub fn new(env: DeeplookEnv) -> Self {
         Self {
             event_type: env.balance_event_type(),
         }

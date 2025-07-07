@@ -1,10 +1,10 @@
 use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 use crate::models::deepbook::deep_price::PriceAdded;
 use crate::utils::ms_to_secs;
-use crate::DeepbookEnv;
+use crate::DeeplookEnv;
 use async_trait::async_trait;
-use deepbook_schema::models::PoolPrice;
-use deepbook_schema::schema::pool_prices;
+use deeplook_schema::models::PoolPrice;
+use deeplook_schema::schema::pool_prices;
 use diesel_async::RunQueryDsl;
 use move_core_types::language_storage::StructTag;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ pub struct PoolPriceHandler {
 }
 
 impl PoolPriceHandler {
-    pub fn new(env: DeepbookEnv) -> Self {
+    pub fn new(env: DeeplookEnv) -> Self {
         Self {
             event_type: env.price_added_event_type(),
         }

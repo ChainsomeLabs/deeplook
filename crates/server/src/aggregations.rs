@@ -23,7 +23,7 @@ use axum::{
 
 use crate::error::DeepBookError;
 use crate::server::{AppState, ParameterUtil};
-use deepbook_schema::{models::OHLCV1min, schema, view};
+use deeplook_schema::{models::OHLCV1min, schema, view};
 
 // const ALLOWED_OHLCV_INTERVALS: &[&str] = &["1min", "15min", "1h"];
 

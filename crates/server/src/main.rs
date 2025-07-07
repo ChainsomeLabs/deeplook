@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use clap::Parser;
-use deepbook_server::server::run_server;
+use deeplook_server::server::run_server;
 use std::net::SocketAddr;
 use sui_pg_db::DbArgs;
 use tokio_util::sync::CancellationToken;
@@ -20,7 +20,7 @@ struct Args {
     #[clap(
         env,
         long,
-        default_value = "postgres://postgres:butter-chicken@10.0.0.10:5432/deeplook"
+        default_value = "postgres://postgres:postgrespw@localhost:5432/deeplook"
     )]
     database_url: Url,
     #[clap(env, long, default_value = "https://fullnode.mainnet.sui.io:443")]
