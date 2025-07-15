@@ -339,14 +339,6 @@ impl OrderbookManager {
                 side.retain(|o| o.size > 0);
             }
         } else {
-            // println!(
-            //     "pool {} trying to subtract more than the size of price level\norderbook: {}\nprice: {}, size: {}, is_bid: {:?}",
-            //     self.pool.pool_name,
-            //     serde_json::to_string(&self.orderbook).unwrap(),
-            //     price,
-            //     size,
-            //     is_bid
-            // );
             println!(
                 "pool {} trying to subtract more than the size of price level",
                 self.pool.pool_name
@@ -360,6 +352,7 @@ impl OrderbookManager {
         }
 
         self.subtract_order(order.price, order.base_quantity, !order.taker_is_bid);
+        // upload new state to Redis
         self.update_orderbook();
     }
 
@@ -369,33 +362,12 @@ impl OrderbookManager {
         }
         match order.status {
             OrderUpdateStatus::Placed => {
-                // println!(
-                //     "placed, order: {:?}\norderbook: {}",
-                //     order,
-                //     serde_json::to_string(&self.orderbook).unwrap()
-                // );
                 self.add_order(order.price, order.quantity, order.is_bid);
             }
             OrderUpdateStatus::Canceled => {
-                // if order.filled_quantity > 0 {
-                //     println!("canceled, order: {:?}", order);
-                // }
-                // if order.filled_quantity > 0 {
-                //     println!(
-                //         "canceled, order: {:?}\norderbook: {}",
-                //         order,
-                //         serde_json::to_string(&self.orderbook).unwrap()
-                //     );
-                // }
-
                 self.subtract_order(order.price, order.quantity, order.is_bid);
             }
             OrderUpdateStatus::Expired => {
-                // println!(
-                //     "expired, order: {:?}\norderbook: {}",
-                //     order,
-                //     serde_json::to_string(&self.orderbook).unwrap()
-                // );
                 self.subtract_order(order.price, order.quantity, order.is_bid);
             }
             OrderUpdateStatus::Modified => {
