@@ -59,33 +59,43 @@ impl Processor for OrderbookOrderUpdateHandler {
                     package.clone(),
                 );
 
-                let result: Result<Vec<OrderUpdate>, bcs::Error> = events
-                    .data
-                    .iter()
-                    .enumerate()
-                    .try_fold(result, |mut result, (index, ev)| {
-                        if ev.type_ == self.order_placed_type {
-                            let event = bcs::from_bytes(&ev.contents)?;
-                            result.push(process_order_placed(event, metadata.clone(), index));
-                        } else if ev.type_ == self.order_modified_type {
-                            let event = bcs::from_bytes(&ev.contents)?;
-                            result.push(process_order_modified(event, metadata.clone(), index));
-                        } else if ev.type_ == self.order_canceled_type {
-                            let event = bcs::from_bytes(&ev.contents)?;
-                            result.push(process_order_canceled(event, metadata.clone(), index));
-                        } else if ev.type_ == self.order_expired_type {
-                            let event = bcs::from_bytes(&ev.contents)?;
-                            result.push(process_order_expired(event, metadata.clone(), index));
-                        }
-                        Ok(result)
-                    });
-
-                if let Ok(updates) = result {
-                    if updates.len() > 0 {
-                        for update in updates {
-                            if let Some(ob_m) = self.orderbook_managers.get(&update.pool_id) {
+                for (index, ev) in events.data.iter().enumerate() {
+                    if ev.type_ == self.order_placed_type {
+                        if let Ok(event) = bcs::from_bytes(&ev.contents) {
+                            let order_update = process_order_placed(event, metadata.clone(), index);
+                            if let Some(ob_m) = self.orderbook_managers.get(&order_update.pool_id) {
                                 if let Ok(mut locked) = ob_m.lock() {
-                                    locked.handle_update(update);
+                                    locked.handle_update(order_update);
+                                }
+                            }
+                        }
+                    } else if ev.type_ == self.order_modified_type {
+                        if let Ok(event) = bcs::from_bytes(&ev.contents) {
+                            let order_update =
+                                process_order_modified(event, metadata.clone(), index);
+                            if let Some(ob_m) = self.orderbook_managers.get(&order_update.pool_id) {
+                                if let Ok(mut locked) = ob_m.lock() {
+                                    locked.handle_update(order_update);
+                                }
+                            }
+                        }
+                    } else if ev.type_ == self.order_canceled_type {
+                        if let Ok(event) = bcs::from_bytes(&ev.contents) {
+                            let order_update =
+                                process_order_canceled(event, metadata.clone(), index);
+                            if let Some(ob_m) = self.orderbook_managers.get(&order_update.pool_id) {
+                                if let Ok(mut locked) = ob_m.lock() {
+                                    locked.handle_update(order_update);
+                                }
+                            }
+                        }
+                    } else if ev.type_ == self.order_expired_type {
+                        if let Ok(event) = bcs::from_bytes(&ev.contents) {
+                            let order_update =
+                                process_order_expired(event, metadata.clone(), index);
+                            if let Some(ob_m) = self.orderbook_managers.get(&order_update.pool_id) {
+                                if let Ok(mut locked) = ob_m.lock() {
+                                    locked.handle_update(order_update);
                                 }
                             }
                         }

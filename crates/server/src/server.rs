@@ -79,6 +79,7 @@ pub const DEEP_SUPPLY_MODULE: &str = "deep";
 pub const DEEP_SUPPLY_FUNCTION: &str = "total_supply";
 pub const DEEP_SUPPLY_PATH: &str = "/deep_supply";
 pub const ORDER_FILLS_PATH: &str = "/order_fills/:pool_name";
+pub const WEBSOCKET_ORDERBOOK: &str = "/ws_orderbook/:pool_name";
 
 // Data Aggregation
 pub const OHLCV_PATH: &str = "/ohlcv/:pool_name";
@@ -178,7 +179,7 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
         .route(DEEP_SUPPLY_PATH, get(deep_supply))
         .route(SUMMARY_PATH, get(summary))
         .route(OBI, get(orderbook_imbalance))
-        .route("/ws/orderbook/:pool_name", get(orderbook_ws))
+        .route(WEBSOCKET_ORDERBOOK, get(orderbook_ws))
         .with_state((state.clone(), rpc_url));
 
     let aggregation_routes = Router::new()

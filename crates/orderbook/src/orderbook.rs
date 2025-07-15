@@ -18,7 +18,7 @@ use sui_types::{
     type_input::TypeInput,
 };
 
-use crate::{checkpoint::CheckpointDigest, error::DeepLookOrderbookError};
+use crate::{error::DeepLookOrderbookError, extract_timestamp};
 
 pub const DEEPBOOK_PACKAGE_ID: &str =
     "0x2c8d603bc51326b8c13cef9dd07031a408a48dddb541963357661df5d3204809";
@@ -54,7 +54,7 @@ pub struct OrderbookReadable {
 pub struct OrderbookManager {
     pub pool: Pool,
     pub orderbook: Orderbook,
-    pub checkpoint: Option<CheckpointDigest>,
+    pub initial_ts: Option<u64>,
     pub sui_client: Arc<SuiClient>,
     cache: Mutex<Cache>,
     price_factor: u64,
@@ -69,7 +69,7 @@ impl OrderbookManager {
         let size_factor = (10u64).pow(base_decimals);
         OrderbookManager {
             pool,
-            checkpoint: None,
+            initial_ts: None,
             sui_client,
             orderbook: Orderbook {
                 asks: vec![],
@@ -82,13 +82,13 @@ impl OrderbookManager {
     }
 
     pub async fn sync(&mut self) -> Result<(), DeepLookOrderbookError> {
-        let (ob, check) = self.get_orderbook_with_checkpoint().await?;
-        self.checkpoint = Some(check);
+        let (ob, ts) = self.get_onchain_orderbook().await?;
+        self.initial_ts = Some(ts);
         self.orderbook = ob;
         Ok(())
     }
 
-    pub async fn get_onchain_orderbook(&self) -> Result<Orderbook, DeepLookOrderbookError> {
+    pub async fn get_onchain_orderbook(&self) -> Result<(Orderbook, u64), DeepLookOrderbookError> {
         let pool_id = &self.pool.pool_id;
         let pool_name = &self.pool.pool_name;
         let base_asset_id = &self.pool.base_asset_id;
@@ -139,6 +139,8 @@ impl OrderbookManager {
 
         let sui_clock_object_ref: ObjectRef =
             (clock_data.object_id, clock_data.version, clock_data.digest);
+
+        let ts = extract_timestamp(&clock_data.content).expect("Failed to parse timestamp");
 
         let clock_input = CallArg::Object(ObjectArg::ImmOrOwnedObject(sui_clock_object_ref));
         ptb.input(clock_input)?;
@@ -255,42 +257,18 @@ impl OrderbookManager {
             })
             .collect();
 
-        Ok(Orderbook { asks, bids })
+        Ok((Orderbook { asks, bids }, ts))
     }
 
-    pub async fn get_orderbook_with_checkpoint(
-        &self,
-    ) -> Result<(Orderbook, CheckpointDigest), DeepLookOrderbookError> {
-        let before = CheckpointDigest::get_sequence_number(self.sui_client.clone().into()).await?;
-        let ob = self.get_onchain_orderbook().await?;
-        let after = CheckpointDigest::get_sequence_number(self.sui_client.clone().into()).await?;
-
-        // TODO: find a deterministic way to find out in which checkpoint was this orderbook constructed.
-        // Currently, there may be discrepency and there may be relevant txs missing around the origin checkpoint.
-        if before == after {
-            println!("checkpoint match: {}", before);
-        } else {
-            println!(
-                "checkpoint discrepency, before: {}, after: {}, discrepency: {}",
-                before,
-                after,
-                after - before
-            );
-        }
-        let checkpoint =
-            CheckpointDigest::from_sequence_number(self.sui_client.clone().into(), after).await?;
-        Ok((ob, checkpoint))
-    }
-
-    fn should_skip_order(&self, order_checkpoint_num: i64) -> bool {
-        let checkpoint = match &self.checkpoint {
+    fn should_skip_order(&self, ts: u64) -> bool {
+        let initial_ts = match &self.initial_ts {
             Some(ch) => ch,
             None => {
                 return true;
             }
         };
 
-        if checkpoint.sequence_number > (order_checkpoint_num as u64) {
+        if initial_ts > &ts {
             // old event, skip
             return true;
         }
@@ -377,7 +355,7 @@ impl OrderbookManager {
     }
 
     pub fn handle_fill(&mut self, order: OrderFill) {
-        if self.should_skip_order(order.checkpoint) {
+        if self.should_skip_order(order.onchain_timestamp as u64) {
             return;
         }
 
@@ -386,7 +364,7 @@ impl OrderbookManager {
     }
 
     pub fn handle_update(&mut self, order: OrderUpdate) {
-        if self.should_skip_order(order.checkpoint) {
+        if self.should_skip_order(order.onchain_timestamp as u64) {
             return;
         }
         match order.status {

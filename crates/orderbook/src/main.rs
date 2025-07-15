@@ -100,7 +100,7 @@ async fn main() -> Result<(), anyhow::Error> {
         database_url,
         DbArgs::default(),
         IndexerArgs {
-            first_checkpoint: Some(current_checkpoint),
+            first_checkpoint: Some(current_checkpoint - 100),
             last_checkpoint: None,
             pipeline: vec![],
             skip_watermark: true,
