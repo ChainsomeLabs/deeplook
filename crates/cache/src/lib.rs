@@ -1,7 +1,7 @@
 use redis::AsyncCommands;
 
-use redis::{ Connection, RedisError };
-use serde::{ Serialize, de::DeserializeOwned };
+use redis::{Connection, RedisError};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Error;
 use url::Url;
 
@@ -9,10 +9,11 @@ use redis::Commands;
 
 impl Clone for Cache {
     fn clone(&self) -> Self {
-        let client = redis::Client
-            ::open(self._connection_string.clone())
+        let client = redis::Client::open(self._connection_string.clone())
             .expect("Failed creating Redis client in Clone");
-        let redis_connection = client.get_connection().expect("Failed getting redis connection");
+        let redis_connection = client
+            .get_connection()
+            .expect("Failed getting redis connection");
 
         Cache {
             _connection_string: self._connection_string.clone(),
@@ -35,10 +36,11 @@ pub enum CacheError {
 
 impl Cache {
     pub fn new(connection_string: Url) -> Self {
-        let client = redis::Client
-            ::open(connection_string.clone())
-            .expect("Failed creating Redis client");
-        let redis_connection = client.get_connection().expect("Failed getting redis connection");
+        let client =
+            redis::Client::open(connection_string.clone()).expect("Failed creating Redis client");
+        let redis_connection = client
+            .get_connection()
+            .expect("Failed getting redis connection");
 
         Cache {
             _connection_string: connection_string,
@@ -53,7 +55,10 @@ impl Cache {
                 return Err(CacheError::Serialization(e));
             }
         };
-        if let Err(e) = self.redis_connection.set::<&str, String, ()>(key, serialized) {
+        if let Err(e) = self
+            .redis_connection
+            .set::<&str, String, ()>(key, serialized)
+        {
             return Err(CacheError::Redis(e));
         }
         Ok(())
@@ -74,7 +79,8 @@ impl Cache {
             }
         };
 
-        let deserialized = serde_json::from_str(&val).map_err(|e| CacheError::DeSerialization(e))?;
+        let deserialized =
+            serde_json::from_str(&val).map_err(|e| CacheError::DeSerialization(e))?;
         Ok(Some(deserialized))
     }
 }
@@ -86,15 +92,16 @@ pub struct AsyncCache {
 
 impl AsyncCache {
     pub fn new(redis_url: Url) -> Self {
-        let client = redis::Client
-            ::open(redis_url)
-            .expect("Failed creating Redis client for AsyncCache");
+        let client =
+            redis::Client::open(redis_url).expect("Failed creating Redis client for AsyncCache");
         Self { client }
     }
 
     pub async fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, CacheError> {
-        let mut conn = self.client
-            .get_multiplexed_async_connection().await
+        let mut conn = self
+            .client
+            .get_multiplexed_async_connection()
+            .await
             .map_err(CacheError::Redis)?;
         let val: Option<String> = conn.get(key).await.map_err(CacheError::Redis)?;
 
@@ -108,8 +115,10 @@ impl AsyncCache {
 
     pub async fn set<T: Serialize>(&self, key: &str, value: &T) -> Result<(), CacheError> {
         let json = serde_json::to_string(value).map_err(CacheError::Serialization)?;
-        let mut conn = self.client
-            .get_multiplexed_async_connection().await
+        let mut conn = self
+            .client
+            .get_multiplexed_async_connection()
+            .await
             .map_err(CacheError::Redis)?;
         conn.set(key, json).await.map_err(CacheError::Redis)
     }

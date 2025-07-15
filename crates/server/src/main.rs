@@ -17,7 +17,11 @@ struct Args {
     server_port: u16,
     #[clap(env, long, default_value = "0.0.0.0:9184")]
     metrics_address: SocketAddr,
-    #[clap(env, long, default_value = "postgres://postgres:postgrespw@localhost:5432/deeplook")]
+    #[clap(
+        env,
+        long,
+        default_value = "postgres://postgres:postgrespw@localhost:5432/deeplook"
+    )]
     database_url: Url,
     #[clap(env, long, default_value = "https://fullnode.mainnet.sui.io:443")]
     rpc_url: Url,
@@ -27,10 +31,18 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let _guard = telemetry_subscribers::TelemetryConfig::new().with_env().init();
+    let _guard = telemetry_subscribers::TelemetryConfig::new()
+        .with_env()
+        .init();
 
-    let Args { db_args, server_port, metrics_address, database_url, rpc_url, redis_url } =
-        Args::parse();
+    let Args {
+        db_args,
+        server_port,
+        metrics_address,
+        database_url,
+        rpc_url,
+        redis_url,
+    } = Args::parse();
     let cancel = CancellationToken::new();
 
     run_server(
@@ -40,8 +52,9 @@ async fn main() -> Result<(), anyhow::Error> {
         rpc_url,
         cancel.child_token(),
         metrics_address,
-        redis_url
-    ).await?;
+        redis_url,
+    )
+    .await?;
 
     Ok(())
 }
