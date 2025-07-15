@@ -357,7 +357,10 @@ impl OrderbookManager {
         if let Some(order) = side.iter_mut().find(|o| o.price == price_u64 && o.size >= size_u64) {
             order.size -= size_u64;
         } else {
-            println!("This should not happen");
+            println!(
+                "Pool {} trying to subtract more than the size of price level",
+                self.pool.pool_name
+            );
         }
     }
 
@@ -365,10 +368,8 @@ impl OrderbookManager {
         if self.should_skip_order(order.checkpoint) {
             return;
         }
-        // remove from both sides
-        self.subtract_order(order.price, order.base_quantity, order.taker_is_bid);
-        self.subtract_order(order.price, order.base_quantity, !order.taker_is_bid);
-        // upload new state to Redis
+        // TODO: Handle fill
+        println!("pool {}, fill: {:#?}", self.pool.pool_name, order);
         self.update_orderbook();
     }
 
@@ -383,7 +384,8 @@ impl OrderbookManager {
             OrderUpdateStatus::Expired =>
                 self.subtract_order(order.price, order.quantity, order.is_bid),
             OrderUpdateStatus::Modified => {
-                println!("Modified: {:#?}", order);
+                // TODO: handle order modified
+                println!("modified: {:#?}", order);
             }
         }
         // upload new state to Redis
