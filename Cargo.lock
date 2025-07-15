@@ -200,7 +200,7 @@ dependencies = [
  "tap",
  "thiserror 1.0.69",
  "tokio",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tower 0.4.13",
  "tracing",
  "x509-parser",
@@ -2014,8 +2014,36 @@ dependencies = [
  "sui-types",
  "telemetry-subscribers",
  "tokio",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tracing",
+ "url",
+]
+
+[[package]]
+name = "deeplook-orderbook"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bcs",
+ "clap",
+ "deeplook-indexer",
+ "deeplook-schema",
+ "deeplook-server",
+ "diesel",
+ "move-core-types 0.0.4 (git+https://github.com/MystenLabs/sui.git?rev=822bae4)",
+ "prometheus",
+ "redis",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "sui-indexer-alt-framework",
+ "sui-indexer-alt-metrics",
+ "sui-sdk",
+ "sui-sdk-types 0.0.2",
+ "sui-types",
+ "tokio",
+ "tokio-util 0.7.15",
  "url",
 ]
 
@@ -2056,7 +2084,7 @@ dependencies = [
  "sui-types",
  "telemetry-subscribers",
  "tokio",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tower-http",
  "url",
 ]
@@ -2670,7 +2698,7 @@ dependencies = [
  "readonly",
  "rfc6979 0.4.0",
  "rsa 0.8.2",
- "schemars",
+ "schemars 0.8.22",
  "secp256k1",
  "serde",
  "serde_json",
@@ -2721,7 +2749,7 @@ dependencies = [
  "readonly",
  "rfc6979 0.4.0",
  "rsa 0.8.2",
- "schemars",
+ "schemars 0.8.22",
  "secp256k1",
  "serde",
  "serde_json",
@@ -2771,7 +2799,7 @@ dependencies = [
  "readonly",
  "rfc6979 0.4.0",
  "rsa 0.8.2",
- "schemars",
+ "schemars 0.8.22",
  "secp256k1",
  "serde",
  "serde_json",
@@ -2860,7 +2888,7 @@ dependencies = [
  "once_cell",
  "regex",
  "reqwest",
- "schemars",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "typenum",
@@ -3271,7 +3299,7 @@ dependencies = [
  "indexmap 2.8.0",
  "slab",
  "tokio",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tracing",
 ]
 
@@ -3290,7 +3318,7 @@ dependencies = [
  "indexmap 2.8.0",
  "slab",
  "tokio",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tracing",
 ]
 
@@ -4103,7 +4131,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-rustls",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tracing",
  "url",
 ]
@@ -4194,7 +4222,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tower 0.4.13",
  "tracing",
 ]
@@ -4300,9 +4328,9 @@ checksum = "884e2677b40cc8c339eaefcb701c32ef1fd2493d71118dc0ca4b6a736c93bd67"
 
 [[package]]
 name = "libc"
-version = "0.2.171"
+version = "0.2.174"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c19937216e9d3aa9956d9bb8dfc0b0c8beb6058fc4f7a4dc4d850edf86a237d6"
+checksum = "1171693293099992e19cddea4e8b849964e9846f4acee11b3948bcc337be8776"
 
 [[package]]
 name = "libloading"
@@ -6626,6 +6654,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "redis"
+version = "0.32.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1f66bf4cac9733a23bcdf1e0e01effbaaad208567beba68be8f67e5f4af3ee1"
+dependencies = [
+ "combine",
+ "itoa",
+ "num-bigint 0.4.6",
+ "percent-encoding",
+ "ryu",
+ "socket2 0.6.0",
+ "url",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6756,7 +6799,7 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-rustls",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tower 0.5.2",
  "tower-service",
  "url",
@@ -7147,6 +7190,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "schemars"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cd191f9397d57d581cddd31014772520aa448f65ef991055d7f61582c65165f"
+dependencies = [
+ "dyn-clone",
+ "ref-cast",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "schemars"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82d20c4491bc164fa2f6c5d44565947a52ad80b9505d8e36f8d54c27c739fcd0"
+dependencies = [
+ "dyn-clone",
+ "ref-cast",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "schemars_derive"
 version = "0.8.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7398,15 +7465,17 @@ dependencies = [
 
 [[package]]
 name = "serde_with"
-version = "3.12.0"
+version = "3.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6b6f7f2fcb69f747921f79f3926bd1e203fce4fef62c268dd3abfb6d86029aa"
+checksum = "f2c45cd61fefa9db6f254525d46e392b852e0e61d9a1fd36e5bd183450a556d5"
 dependencies = [
  "base64 0.22.1",
  "chrono",
  "hex",
  "indexmap 1.9.3",
  "indexmap 2.8.0",
+ "schemars 0.9.0",
+ "schemars 1.0.4",
  "serde",
  "serde_derive",
  "serde_json",
@@ -7416,9 +7485,9 @@ dependencies = [
 
 [[package]]
 name = "serde_with_macros"
-version = "3.12.0"
+version = "3.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d00caa5193a3c8362ac2b73be6b9e768aa5a4b2f721d8f4b339600c3cb51f8e"
+checksum = "de90945e6565ce0d9a25098082ed4ee4002e047cb59892c318d66821e14bb30f"
 dependencies = [
  "darling 0.20.10",
  "proc-macro2",
@@ -7660,6 +7729,16 @@ checksum = "c970269d99b64e60ec3bd6ad27270092a5394c4e309314b18ae3fe575695fbe8"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "socket2"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "233504af464074f9d066d7b5416c5f9b894a5862a6506e306f7b816cdd6f1807"
+dependencies = [
+ "libc",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8188,7 +8267,7 @@ dependencies = [
  "socket2 0.5.8",
  "tokio",
  "tokio-rustls",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tower 0.5.2",
  "tracing",
 ]
@@ -8224,7 +8303,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tonic 0.13.1",
  "tracing",
  "tracing-subscriber",
@@ -8242,7 +8321,7 @@ dependencies = [
  "prometheus",
  "sui-pg-db",
  "tokio",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tracing",
 ]
 
@@ -8257,7 +8336,7 @@ dependencies = [
  "move-binary-format 0.0.3 (git+https://github.com/MystenLabs/sui.git?rev=822bae4)",
  "move-bytecode-utils",
  "move-core-types 0.0.4 (git+https://github.com/MystenLabs/sui.git?rev=822bae4)",
- "schemars",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "sui-types",
@@ -8301,7 +8380,7 @@ dependencies = [
  "move-disassembler",
  "move-ir-types",
  "mysten-metrics",
- "schemars",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "serde_with",
@@ -8351,7 +8430,7 @@ version = "1.48.4"
 source = "git+https://github.com/MystenLabs/sui.git?rev=822bae4#822bae445bd363cff97196abef338a7f3795893c"
 dependencies = [
  "bcs",
- "schemars",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "versions",
@@ -8427,7 +8506,7 @@ dependencies = [
  "clap",
  "fastcrypto 0.1.8",
  "move-vm-config",
- "schemars",
+ "schemars 0.8.22",
  "serde",
  "serde-env",
  "serde_with",
@@ -8698,7 +8777,7 @@ dependencies = [
  "rand 0.8.5",
  "roaring",
  "rustls-pemfile",
- "schemars",
+ "schemars 0.8.22",
  "serde",
  "serde-name",
  "serde_json",
@@ -9141,7 +9220,7 @@ dependencies = [
  "rand 0.9.0",
  "socket2 0.5.8",
  "tokio",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "whoami",
 ]
 
@@ -9164,7 +9243,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
 ]
 
 [[package]]
@@ -9197,9 +9276,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.14"
+version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b9590b93e6fcc1739458317cccd391ad3955e2bde8913edf6f95f9e65a8f034"
+checksum = "66a539a9ad6d5d281510d5bd368c973d636c02dbf8a67300bfb6b950696ad7df"
 dependencies = [
  "bytes",
  "futures-core",
@@ -9416,7 +9495,7 @@ dependencies = [
  "rand 0.8.5",
  "slab",
  "tokio",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -9436,7 +9515,7 @@ dependencies = [
  "slab",
  "sync_wrapper 1.0.2",
  "tokio",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -9465,7 +9544,7 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "tokio",
- "tokio-util 0.7.14",
+ "tokio-util 0.7.15",
  "tower 0.4.13",
  "tower-layer",
  "tower-service",

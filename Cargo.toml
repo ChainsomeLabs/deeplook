@@ -1,14 +1,20 @@
 [workspace]
 resolver = "2"
 
-members = ["crates/indexer", "crates/schema", "crates/server"]
+members = [
+  "crates/indexer",
+  "crates/orderbook",
+  "crates/schema",
+  "crates/server",
+]
 
 [workspace.dependencies]
 bigdecimal = { version = "0.4.8", features = ["serde"] }
 chrono = { version = "=0.4.41", features = ["clock", "serde"] }
 tokio = "1.45.1"
-serde = "1.0.217"
+serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"
+serde_with = "3.14.0"
 diesel = "2.2.7"
 diesel-async = "0.5.2"
 diesel_migrations = "2.2.0"
@@ -19,10 +25,16 @@ async-trait = "0.1.83"
 bcs = "0.1.6"
 url = "2.5.4"
 prometheus = "0.13.4"
-tokio-util = "0.7.13"
+redis = { version = "0.32.4", default-features = false }
+tokio-util = "0.7.15"
 
 sui-indexer-alt-metrics = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
+sui-indexer-alt-framework = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
+sui-sdk-types = { git = "https://github.com/mystenlabs/sui-rust-sdk", features = [
+  "serde",
+], rev = "86a9e06" }
 telemetry-subscribers = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
 sui-pg-db = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
 move-core-types = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
 sui-types = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
+sui-sdk = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }

@@ -1,18 +1,29 @@
 use crate::schema::{
-    balances, balances_summary, flashloans, order_fills, order_updates, pool_prices, pools,
-    proposals, rebates, stakes, sui_error_transactions, trade_params_update, votes,
+    balances,
+    balances_summary,
+    flashloans,
+    order_fills,
+    order_updates,
+    pool_prices,
+    pools,
+    proposals,
+    rebates,
+    stakes,
+    sui_error_transactions,
+    trade_params_update,
+    votes,
 };
 use crate::view::ohlcv_1min;
 use bigdecimal::BigDecimal;
 use chrono::NaiveDateTime;
 use diesel::deserialize::FromSql;
-use diesel::pg::{Pg, PgValue};
-use diesel::serialize::{Output, ToSql};
+use diesel::pg::{ Pg, PgValue };
+use diesel::serialize::{ Output, ToSql };
 use diesel::sql_types::Text;
-use diesel::{AsExpression, Identifiable, Insertable, Queryable, QueryableByName, Selectable};
-use serde::Serialize;
+use diesel::{ AsExpression, Identifiable, Insertable, Queryable, QueryableByName, Selectable };
+use serde::{ Deserialize, Serialize };
 use std::str::FromStr;
-use strum_macros::{AsRefStr, EnumString};
+use strum_macros::{ AsRefStr, EnumString };
 use sui_field_count::FieldCount;
 
 #[derive(Queryable, Selectable, Insertable, Identifiable, Debug, FieldCount)]
@@ -237,9 +248,18 @@ pub struct Votes {
     pub stake: i64,
 }
 
-#[derive(Queryable, Selectable, Insertable, Identifiable, Debug, FieldCount, Serialize)]
+#[derive(
+    Queryable,
+    Selectable,
+    Insertable,
+    Identifiable,
+    Debug,
+    FieldCount,
+    Serialize,
+    Deserialize
+)]
 #[diesel(table_name = pools, primary_key(pool_id))]
-pub struct Pools {
+pub struct Pool {
     pub pool_id: String,
     pub pool_name: String,
     pub base_asset_id: String,

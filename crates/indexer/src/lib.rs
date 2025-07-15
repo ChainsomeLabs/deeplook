@@ -4,8 +4,8 @@ use move_types::MoveStruct;
 use url::Url;
 
 pub mod handlers;
-pub(crate) mod models;
-pub(crate) mod utils;
+pub mod models;
+pub mod utils;
 
 pub const MAINNET_REMOTE_STORE_URL: &str = "https://checkpoints.mainnet.sui.io";
 pub const TESTNET_REMOTE_STORE_URL: &str = "https://checkpoints.testnet.sui.io";
@@ -50,11 +50,11 @@ pub enum DeeplookEnv {
 macro_rules! event_type_fn {
     (
         $(#[$meta:meta])*
-        $fn_name:ident,
+        $vis:vis $fn_name:ident,
         $($path:ident)::+
     ) => {
         $(#[$meta])*
-        fn $fn_name(&self) -> StructTag {
+        $vis fn $fn_name(&self) -> StructTag {
             match self {
                 DeeplookEnv::Mainnet => {
                     use models::deepbook::$($path)::+ as Event;
@@ -79,20 +79,17 @@ impl DeeplookEnv {
         Url::parse(remote_store_url).unwrap()
     }
 
-    event_type_fn!(balance_event_type, balance_manager::BalanceEvent);
-    event_type_fn!(flash_loan_borrowed_event_type, vault::FlashLoanBorrowed);
-    event_type_fn!(order_filled_event_type, order_info::OrderFilled);
-    event_type_fn!(order_placed_event_type, order_info::OrderPlaced);
-    event_type_fn!(order_modified_event_type, order::OrderModified);
-    event_type_fn!(order_canceled_event_type, order::OrderCanceled);
-    event_type_fn!(order_expired_event_type, order_info::OrderExpired);
-    event_type_fn!(vote_event_type, state::VoteEvent);
-    event_type_fn!(
-        trade_params_update_event_type,
-        governance::TradeParamsUpdateEvent
-    );
-    event_type_fn!(stake_event_type, state::StakeEvent);
-    event_type_fn!(rebate_event_type, state::RebateEvent);
-    event_type_fn!(proposal_event_type, state::ProposalEvent);
-    event_type_fn!(price_added_event_type, deep_price::PriceAdded);
+    event_type_fn!(pub balance_event_type, balance_manager::BalanceEvent);
+    event_type_fn!(pub flash_loan_borrowed_event_type, vault::FlashLoanBorrowed);
+    event_type_fn!(pub order_filled_event_type, order_info::OrderFilled);
+    event_type_fn!(pub order_placed_event_type, order_info::OrderPlaced);
+    event_type_fn!(pub order_modified_event_type, order::OrderModified);
+    event_type_fn!(pub order_canceled_event_type, order::OrderCanceled);
+    event_type_fn!(pub order_expired_event_type, order_info::OrderExpired);
+    event_type_fn!(pub vote_event_type, state::VoteEvent);
+    event_type_fn!(pub trade_params_update_event_type, governance::TradeParamsUpdateEvent);
+    event_type_fn!(pub stake_event_type, state::StakeEvent);
+    event_type_fn!(pub rebate_event_type, state::RebateEvent);
+    event_type_fn!(pub proposal_event_type, state::ProposalEvent);
+    event_type_fn!(pub price_added_event_type, deep_price::PriceAdded);
 }
