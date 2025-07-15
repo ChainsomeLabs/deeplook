@@ -1,16 +1,16 @@
-use crate::handlers::{ is_deepbook_tx, try_extract_move_call_package };
 use crate::OrderbookManagerMap;
+use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 
-use deeplook_indexer::models::deepbook::order::{ OrderCanceled, OrderModified };
-use deeplook_indexer::models::deepbook::order_info::{ OrderExpired, OrderPlaced };
-use deeplook_indexer::utils::ms_to_secs;
 use deeplook_indexer::DeeplookEnv;
-use deeplook_schema::models::{ OrderUpdate, OrderUpdateStatus };
+use deeplook_indexer::models::deepbook::order::{OrderCanceled, OrderModified};
+use deeplook_indexer::models::deepbook::order_info::{OrderExpired, OrderPlaced};
+use deeplook_indexer::utils::ms_to_secs;
+use deeplook_schema::models::{OrderUpdate, OrderUpdateStatus};
 use move_core_types::language_storage::StructTag;
 use std::sync::Arc;
-use sui_indexer_alt_framework::pipeline::concurrent::Handler;
+use sui_indexer_alt_framework::db::{Connection, Db};
 use sui_indexer_alt_framework::pipeline::Processor;
-use sui_indexer_alt_framework::db::{ Connection, Db };
+use sui_indexer_alt_framework::pipeline::concurrent::Handler;
 use sui_types::full_checkpoint_content::CheckpointData;
 
 type TransactionMetadata = (String, u64, u64, String, String);
@@ -39,56 +39,60 @@ impl Processor for OrderbookOrderUpdateHandler {
     const NAME: &'static str = "order_update";
     type Value = OrderUpdate;
     fn process(&self, checkpoint: &Arc<CheckpointData>) -> anyhow::Result<Vec<Self::Value>> {
-        checkpoint.transactions.iter().try_fold(vec![], |result, tx| {
-            if !is_deepbook_tx(tx) {
-                return Ok(result);
-            }
-            let Some(events) = &tx.events else {
-                return Ok(result);
-            };
+        checkpoint
+            .transactions
+            .iter()
+            .try_fold(vec![], |result, tx| {
+                if !is_deepbook_tx(tx) {
+                    return Ok(result);
+                }
+                let Some(events) = &tx.events else {
+                    return Ok(result);
+                };
 
-            let package = try_extract_move_call_package(tx).unwrap_or_default();
-            let metadata = (
-                tx.transaction.sender_address().to_string(),
-                checkpoint.checkpoint_summary.sequence_number,
-                checkpoint.checkpoint_summary.timestamp_ms,
-                tx.transaction.digest().to_string(),
-                package.clone(),
-            );
+                let package = try_extract_move_call_package(tx).unwrap_or_default();
+                let metadata = (
+                    tx.transaction.sender_address().to_string(),
+                    checkpoint.checkpoint_summary.sequence_number,
+                    checkpoint.checkpoint_summary.timestamp_ms,
+                    tx.transaction.digest().to_string(),
+                    package.clone(),
+                );
 
-            let result: Result<Vec<OrderUpdate>, bcs::Error> = events.data
-                .iter()
-                .enumerate()
-                .try_fold(result, |mut result, (index, ev)| {
-                    if ev.type_ == self.order_placed_type {
-                        let event = bcs::from_bytes(&ev.contents)?;
-                        result.push(process_order_placed(event, metadata.clone(), index));
-                    } else if ev.type_ == self.order_modified_type {
-                        let event = bcs::from_bytes(&ev.contents)?;
-                        result.push(process_order_modified(event, metadata.clone(), index));
-                    } else if ev.type_ == self.order_canceled_type {
-                        let event = bcs::from_bytes(&ev.contents)?;
-                        result.push(process_order_canceled(event, metadata.clone(), index));
-                    } else if ev.type_ == self.order_expired_type {
-                        let event = bcs::from_bytes(&ev.contents)?;
-                        result.push(process_order_expired(event, metadata.clone(), index));
-                    }
-                    Ok(result)
-                });
+                let result: Result<Vec<OrderUpdate>, bcs::Error> = events
+                    .data
+                    .iter()
+                    .enumerate()
+                    .try_fold(result, |mut result, (index, ev)| {
+                        if ev.type_ == self.order_placed_type {
+                            let event = bcs::from_bytes(&ev.contents)?;
+                            result.push(process_order_placed(event, metadata.clone(), index));
+                        } else if ev.type_ == self.order_modified_type {
+                            let event = bcs::from_bytes(&ev.contents)?;
+                            result.push(process_order_modified(event, metadata.clone(), index));
+                        } else if ev.type_ == self.order_canceled_type {
+                            let event = bcs::from_bytes(&ev.contents)?;
+                            result.push(process_order_canceled(event, metadata.clone(), index));
+                        } else if ev.type_ == self.order_expired_type {
+                            let event = bcs::from_bytes(&ev.contents)?;
+                            result.push(process_order_expired(event, metadata.clone(), index));
+                        }
+                        Ok(result)
+                    });
 
-            if let Ok(updates) = result {
-                if updates.len() > 0 {
-                    for update in updates {
-                        if let Some(ob_m) = self.orderbook_managers.get(&update.pool_id) {
-                            if let Ok(mut locked) = ob_m.lock() {
-                                locked.handle_update(update);
+                if let Ok(updates) = result {
+                    if updates.len() > 0 {
+                        for update in updates {
+                            if let Some(ob_m) = self.orderbook_managers.get(&update.pool_id) {
+                                if let Ok(mut locked) = ob_m.lock() {
+                                    locked.handle_update(update);
+                                }
                             }
                         }
                     }
                 }
-            }
-            Ok(vec![])
-        })
+                Ok(vec![])
+            })
     }
 }
 
@@ -98,7 +102,7 @@ impl Handler for OrderbookOrderUpdateHandler {
 
     async fn commit<'a>(
         _values: &[Self::Value],
-        _conn: &mut Connection<'a>
+        _conn: &mut Connection<'a>,
     ) -> anyhow::Result<usize> {
         // do not store in db
         Ok(0)
@@ -108,7 +112,7 @@ impl Handler for OrderbookOrderUpdateHandler {
 fn process_order_placed(
     order_placed: OrderPlaced,
     (sender, checkpoint, checkpoint_timestamp_ms, digest, package): TransactionMetadata,
-    event_index: usize
+    event_index: usize,
 ) -> OrderUpdate {
     let event_digest = format!("{digest}{event_index}");
     OrderUpdate {
@@ -137,7 +141,7 @@ fn process_order_placed(
 fn process_order_modified(
     order_modified: OrderModified,
     (sender, checkpoint, checkpoint_timestamp_ms, digest, package): TransactionMetadata,
-    event_index: usize
+    event_index: usize,
 ) -> OrderUpdate {
     let event_digest = format!("{digest}{event_index}");
     OrderUpdate {
@@ -166,7 +170,7 @@ fn process_order_modified(
 fn process_order_canceled(
     order_canceled: OrderCanceled,
     (sender, checkpoint, checkpoint_timestamp_ms, digest, package): TransactionMetadata,
-    event_index: usize
+    event_index: usize,
 ) -> OrderUpdate {
     let event_digest = format!("{digest}{event_index}");
     OrderUpdate {
@@ -186,8 +190,8 @@ fn process_order_canceled(
         onchain_timestamp: order_canceled.timestamp as i64,
         original_quantity: order_canceled.original_quantity as i64,
         quantity: order_canceled.base_asset_quantity_canceled as i64,
-        filled_quantity: (order_canceled.original_quantity -
-            order_canceled.base_asset_quantity_canceled) as i64,
+        filled_quantity: (order_canceled.original_quantity
+            - order_canceled.base_asset_quantity_canceled) as i64,
         trader: order_canceled.trader.to_string(),
         balance_manager_id: order_canceled.balance_manager_id.to_string(),
     }
@@ -196,7 +200,7 @@ fn process_order_canceled(
 fn process_order_expired(
     order_expired: OrderExpired,
     (sender, checkpoint, checkpoint_timestamp_ms, digest, package): TransactionMetadata,
-    event_index: usize
+    event_index: usize,
 ) -> OrderUpdate {
     let event_digest = format!("{digest}{event_index}");
     OrderUpdate {
@@ -216,8 +220,8 @@ fn process_order_expired(
         onchain_timestamp: order_expired.timestamp as i64,
         original_quantity: order_expired.original_quantity as i64,
         quantity: order_expired.base_asset_quantity_canceled as i64,
-        filled_quantity: (order_expired.original_quantity -
-            order_expired.base_asset_quantity_canceled) as i64,
+        filled_quantity: (order_expired.original_quantity
+            - order_expired.base_asset_quantity_canceled) as i64,
         trader: order_expired.trader.to_string(),
         balance_manager_id: order_expired.balance_manager_id.to_string(),
     }

@@ -1,13 +1,12 @@
 use move_core_types::account_address::AccountAddress;
 use sui_types::full_checkpoint_content::CheckpointTransaction;
-use sui_types::transaction::{ Command, TransactionDataAPI };
+use sui_types::transaction::{Command, TransactionDataAPI};
 
 pub mod orderbook_order_fill_handler;
 pub mod orderbook_order_update_handler;
 
-const DEEPBOOK_PKG_ADDRESS: AccountAddress = AccountAddress::new(
-    *deeplook_indexer::models::deepbook::registry::PACKAGE_ID.inner()
-);
+const DEEPBOOK_PKG_ADDRESS: AccountAddress =
+    AccountAddress::new(*deeplook_indexer::models::deepbook::registry::PACKAGE_ID.inner());
 
 pub(crate) fn is_deepbook_tx(tx: &CheckpointTransaction) -> bool {
     tx.input_objects.iter().any(|obj| {

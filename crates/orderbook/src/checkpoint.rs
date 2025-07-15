@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use serde::{ Serialize, Deserialize };
-use sui_sdk::{ rpc_types::CheckpointId, SuiClient };
+use sui_sdk::{SuiClient, rpc_types::CheckpointId};
 use sui_types::{
     committee::EpochId,
-    messages_checkpoint::{ CheckpointSequenceNumber, CheckpointTimestamp },
+    messages_checkpoint::{CheckpointSequenceNumber, CheckpointTimestamp},
     sui_serde::BigInt,
 };
 
@@ -26,11 +26,12 @@ pub struct CheckpointDigest {
 impl CheckpointDigest {
     pub async fn from_sequence_number(
         sui_client: Arc<SuiClient>,
-        n: CheckpointSequenceNumber
+        n: CheckpointSequenceNumber,
     ) -> Result<Self, DeepLookOrderbookError> {
         let checkpoint: sui_sdk::rpc_types::Checkpoint = sui_client
             .read_api()
-            .get_checkpoint(CheckpointId::SequenceNumber(n)).await?;
+            .get_checkpoint(CheckpointId::SequenceNumber(n))
+            .await?;
 
         Ok(CheckpointDigest {
             epoch: checkpoint.epoch,
@@ -42,10 +43,12 @@ impl CheckpointDigest {
     pub async fn get_latest(sui_client: Arc<SuiClient>) -> Result<Self, DeepLookOrderbookError> {
         let latest_checkpoint = sui_client
             .read_api()
-            .get_latest_checkpoint_sequence_number().await?;
+            .get_latest_checkpoint_sequence_number()
+            .await?;
         let checkpoint: sui_sdk::rpc_types::Checkpoint = sui_client
             .read_api()
-            .get_checkpoint(CheckpointId::SequenceNumber(latest_checkpoint)).await?;
+            .get_checkpoint(CheckpointId::SequenceNumber(latest_checkpoint))
+            .await?;
 
         Ok(CheckpointDigest {
             epoch: checkpoint.epoch,
@@ -55,9 +58,12 @@ impl CheckpointDigest {
     }
 
     pub async fn get_sequence_number(
-        sui_client: Arc<SuiClient>
+        sui_client: Arc<SuiClient>,
     ) -> Result<CheckpointSequenceNumber, DeepLookOrderbookError> {
-        let latest_sequence = sui_client.read_api().get_latest_checkpoint_sequence_number().await?;
+        let latest_sequence = sui_client
+            .read_api()
+            .get_latest_checkpoint_sequence_number()
+            .await?;
         Ok(latest_sequence)
     }
 }
