@@ -93,7 +93,7 @@ impl OrderbookManager {
         let pool_name = &self.pool.pool_name;
         let base_asset_id = &self.pool.base_asset_id;
         let quote_asset_id = &self.pool.quote_asset_id;
-        let ticks_from_mid = 100u64;
+        let ticks_from_mid = u64::MAX;
         let pool_address = ObjectID::from_hex_literal(pool_id)?;
 
         let mut ptb = ProgrammableTransactionBuilder::new();
