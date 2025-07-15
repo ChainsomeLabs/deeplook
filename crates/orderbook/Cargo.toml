@@ -30,6 +30,7 @@ url.workspace = true
 deeplook-indexer = { path = "../indexer" }
 deeplook-schema = { path = "../schema" }
 deeplook-server = { path = "../server" }
+deeplook-cache = { path = "../cache" }
 
 [[bin]]
 name = "deeplook-orderbook"

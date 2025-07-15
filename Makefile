@@ -34,4 +34,7 @@ indexer:
 api:
 	source .env && cargo run -p deeplook-server -- --metrics-address=0.0.0.0:9185
 
-.PHONY: postgres redis createdb dropdb migrateup migratedown
+orderbook:
+	source .env && cargo run -p deeplook-orderbook
+
+.PHONY: postgres redis createdb dropdb migrateup migratedown indexer api orderbook

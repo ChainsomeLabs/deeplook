@@ -1,11 +1,7 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::{ collections::HashMap, sync::{ Arc, Mutex } };
 
 use crate::orderbook::OrderbookManager;
 
-pub mod cache;
 pub mod checkpoint;
 pub mod error;
 pub mod handlers;
