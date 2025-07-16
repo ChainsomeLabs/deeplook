@@ -1,6 +1,7 @@
 use std::{
     str::FromStr,
     sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use deeplook_cache::Cache;
@@ -140,8 +141,6 @@ impl OrderbookManager {
         let sui_clock_object_ref: ObjectRef =
             (clock_data.object_id, clock_data.version, clock_data.digest);
 
-        let ts = extract_timestamp(&clock_data.content).expect("Failed to parse timestamp");
-
         let clock_input = CallArg::Object(ObjectArg::ImmOrOwnedObject(sui_clock_object_ref));
         ptb.input(clock_input)?;
 
@@ -170,6 +169,13 @@ impl OrderbookManager {
             .read_api()
             .dev_inspect_transaction_block(SuiAddress::default(), tx, None, None, None)
             .await?;
+
+        let _sui_clock_ts =
+            extract_timestamp(&clock_data.content).expect("Failed to parse timestamp");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis() as u64;
 
         let mut binding: Vec<sui_sdk::rpc_types::SuiExecutionResult> =
             result.results.ok_or(DeepLookOrderbookError::InternalError(
@@ -257,7 +263,7 @@ impl OrderbookManager {
             })
             .collect();
 
-        Ok((Orderbook { asks, bids }, ts))
+        Ok((Orderbook { asks, bids }, now))
     }
 
     fn should_skip_order(&self, ts: u64) -> bool {
