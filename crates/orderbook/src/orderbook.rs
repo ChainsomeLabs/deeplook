@@ -338,16 +338,28 @@ impl OrderbookManager {
         // Try to find an existing order at the same price level
         if let Some(order) = side
             .iter_mut()
-            .find(|o| o.price == price_u64 && o.size >= size_u64)
+            .find(|o| o.price == price_u64)
         {
-            order.size -= size_u64;
+
+            let to_sub = if order.size < size_u64 {
+                println!(
+                    "Unable to subtract whole amount p: {}, q: {}, is_bid: {} for pool {}, current order: {:?}",
+                    price, size, is_bid, self.pool.pool_name, order
+                );
+                order.size
+            } else {
+                size_u64
+            };
+
+            order.size -= to_sub;
+
             if order.size == 0 {
                 side.retain(|o| o.size > 0);
             }
         } else {
             println!(
-                "pool {} trying to subtract more than the size of price level",
-                self.pool.pool_name
+                "Unable to find level to subtract p: {}, q: {}, is_bid: {} for pool {}", 
+                price, size, is_bid, self.pool.pool_name
             );
         }
     }
