@@ -12,7 +12,7 @@ COPY crates/ ./crates/
 RUN apt-get update && apt-get install -y build-essential libssl-dev pkg-config curl cmake clang ca-certificates
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-RUN cargo build --profile $PROFILE --bin deeplook-indexer --config net.git-fetch-with-cli=true
+RUN cargo build --profile $PROFILE --bin deeplook-orderbook --config net.git-fetch-with-cli=true
 
 FROM debian:bookworm-slim AS runtime
 
@@ -22,14 +22,13 @@ RUN apt-get -y --no-install-recommends install wget \
         curl iproute2 git ca-certificates libpq-dev \
         postgresql
 
-COPY --from=builder /work/target/release/deeplook-indexer /opt/mysten/bin/
+COPY --from=builder /work/target/release/deeplook-orderbook /opt/mysten/bin/
 COPY docker/entry_indexer.sh .
-RUN ["chmod", "+x", "/opt/mysten/bin/deeplook-indexer"]
-RUN ["chmod", "+x", "entry_indexer.sh"]
+RUN ["chmod", "+x", "/opt/mysten/bin/deeplook-orderbook"]
 
 ARG BUILD_DATE
 ARG GIT_REVISION
 LABEL build-date=$BUILD_DATE
 LABEL git-revision=$GIT_REVISION
 
-CMD ["./entry_indexer.sh"]
+CMD ["/opt/mysten/bin/deeplook-orderbook"]
