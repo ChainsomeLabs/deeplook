@@ -1,6 +1,7 @@
 use crate::error::DeepBookError;
 use crate::metrics::RpcMetrics;
-use deeplook_schema::models::{OrderFillSummary, Pools};
+use deeplook_cache::AsyncCache;
+use deeplook_schema::models::{OrderFillSummary, Pool};
 use deeplook_schema::schema;
 use diesel::deserialize::FromSqlRow;
 use diesel::dsl::sql;
@@ -21,6 +22,7 @@ use url::Url;
 pub struct Reader {
     db: Db,
     metrics: Arc<RpcMetrics>,
+    pub cache: AsyncCache,
 }
 
 impl Reader {
@@ -29,6 +31,7 @@ impl Reader {
         db_args: DbArgs,
         metrics: Arc<RpcMetrics>,
         registry: &Registry,
+        redis_url: Url,
     ) -> Result<Self, anyhow::Error> {
         let db = Db::for_read(database_url, db_args).await?;
         registry.register(Box::new(DbConnectionStatsCollector::new(
@@ -40,7 +43,9 @@ impl Reader {
         // connect to the DB on startup.
         let _ = db.connect().await?;
 
-        Ok(Self { db, metrics })
+        let cache = AsyncCache::new(redis_url);
+
+        Ok(Self { db, metrics, cache })
     }
 
     pub(crate) async fn results<Q, U>(&self, query: Q) -> Result<Vec<U>, anyhow::Error>
@@ -84,9 +89,9 @@ impl Reader {
         Ok(res?)
     }
 
-    pub async fn get_pools(&self) -> Result<Vec<Pools>, DeepBookError> {
+    pub async fn get_pools(&self) -> Result<Vec<Pool>, DeepBookError> {
         Ok(self
-            .results(schema::pools::table.select(Pools::as_select()))
+            .results(schema::pools::table.select(Pool::as_select()))
             .await?)
     }
 

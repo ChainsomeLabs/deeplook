@@ -25,6 +25,8 @@ struct Args {
     database_url: Url,
     #[clap(env, long, default_value = "https://fullnode.mainnet.sui.io:443")]
     rpc_url: Url,
+    #[clap(env, long, default_value = "redis://localhost:6379")]
+    redis_url: Url,
 }
 
 #[tokio::main]
@@ -39,6 +41,7 @@ async fn main() -> Result<(), anyhow::Error> {
         metrics_address,
         database_url,
         rpc_url,
+        redis_url,
     } = Args::parse();
     let cancel = CancellationToken::new();
 
@@ -49,6 +52,7 @@ async fn main() -> Result<(), anyhow::Error> {
         rpc_url,
         cancel.child_token(),
         metrics_address,
+        redis_url,
     )
     .await?;
 

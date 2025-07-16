@@ -2,20 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::error::DeepBookError;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::Method;
+use axum::response::IntoResponse;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
     Json, Router,
 };
-use deeplook_schema::models::{BalancesSummary, OrderFill, Pools};
+use deeplook_schema::models::{BalancesSummary, OrderFill, Pool};
 use deeplook_schema::*;
 use diesel::dsl::count_star;
 use diesel::dsl::{max, min};
 use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+use futures::{FutureExt, StreamExt};
 use serde_json::Value;
 use std::net::{IpAddr, Ipv4Addr};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, net::SocketAddr};
 use sui_pg_db::DbArgs;
@@ -30,7 +34,6 @@ use axum::middleware::from_fn_with_state;
 use futures::future::join_all;
 use prometheus::Registry;
 use std::str::FromStr;
-use std::sync::Arc;
 use sui_indexer_alt_metrics::{MetricsArgs, MetricsService};
 use sui_json_rpc_types::{SuiObjectData, SuiObjectDataOptions, SuiObjectResponse};
 use sui_sdk::SuiClientBuilder;
@@ -76,6 +79,7 @@ pub const DEEP_SUPPLY_MODULE: &str = "deep";
 pub const DEEP_SUPPLY_FUNCTION: &str = "total_supply";
 pub const DEEP_SUPPLY_PATH: &str = "/deep_supply";
 pub const ORDER_FILLS_PATH: &str = "/order_fills/:pool_name";
+pub const WEBSOCKET_ORDERBOOK: &str = "/ws_orderbook/:pool_name";
 
 // Data Aggregation
 pub const OHLCV_PATH: &str = "/ohlcv/:pool_name";
@@ -95,9 +99,10 @@ impl AppState {
         database_url: Url,
         args: DbArgs,
         registry: &Registry,
+        redis_url: Url,
     ) -> Result<Self, anyhow::Error> {
         let metrics = RpcMetrics::new(registry);
-        let reader = Reader::new(database_url, args, metrics.clone(), registry).await?;
+        let reader = Reader::new(database_url, args, metrics.clone(), registry, redis_url).await?;
         Ok(Self { reader, metrics })
     }
     pub(crate) fn metrics(&self) -> &RpcMetrics {
@@ -112,6 +117,7 @@ pub async fn run_server(
     rpc_url: Url,
     cancellation_token: CancellationToken,
     metrics_address: SocketAddr,
+    redis_url: Url,
 ) -> Result<(), anyhow::Error> {
     let registry = Registry::new_custom(Some("deeplook_api".into()), None)
         .expect("Failed to create Prometheus registry.");
@@ -122,7 +128,7 @@ pub async fn run_server(
         cancellation_token.clone(),
     );
 
-    let state = AppState::new(database_url, db_arg, metrics.registry()).await?;
+    let state = AppState::new(database_url, db_arg, metrics.registry(), redis_url).await?;
     let socket_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), server_port);
 
     println!("🚀 Server started successfully on port {}", server_port);
@@ -173,6 +179,7 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
         .route(DEEP_SUPPLY_PATH, get(deep_supply))
         .route(SUMMARY_PATH, get(summary))
         .route(OBI, get(orderbook_imbalance))
+        .route(WEBSOCKET_ORDERBOOK, get(orderbook_ws))
         .with_state((state.clone(), rpc_url));
 
     let aggregation_routes = Router::new()
@@ -217,7 +224,7 @@ async fn health_check() -> StatusCode {
 }
 
 /// Get all pools stored in database
-async fn get_pools(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Pools>>, DeepBookError> {
+async fn get_pools(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Pool>>, DeepBookError> {
     Ok(Json(state.reader.get_pools().await?))
 }
 
@@ -455,7 +462,7 @@ async fn ticker(
 
     // Fetch pools data for metadata
     let pools = state.reader.get_pools().await?;
-    let pool_map: HashMap<String, &Pools> = pools
+    let pool_map: HashMap<String, &Pool> = pools
         .iter()
         .map(|pool| (pool.pool_id.clone(), pool))
         .collect();
@@ -1460,6 +1467,74 @@ pub async fn get_order_fills(
 pub fn parse_type_input(type_str: &str) -> Result<TypeInput, DeepBookError> {
     let type_tag = TypeTag::from_str(type_str)?;
     Ok(TypeInput::from(type_tag))
+}
+
+// --- WebSocket handler for orderbook ---
+
+async fn orderbook_ws(
+    ws: WebSocketUpgrade,
+    Path(pool_name): Path<String>,
+    State(state): State<(Arc<AppState>, Url)>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_orderbook_socket(socket, pool_name, state.0.clone()))
+}
+
+async fn handle_orderbook_socket(mut socket: WebSocket, pool_name: String, state: Arc<AppState>) {
+    // Redis key that stores the order‑book JSON
+    let redis_key = format!("orderbook::{}", pool_name);
+
+    // Clone the async cache and extract the underlying Redis client
+    let cache = state.reader.cache.clone();
+    let mut pubsub = cache
+        .client
+        .get_async_pubsub()
+        .await
+        .expect("Failed getting pubsub");
+    let channel = format!("__keyspace@0__:{}", redis_key);
+
+    pubsub
+        .subscribe(&channel)
+        .await
+        .expect("Failed to subscribe to key‑space");
+
+    // Helper to grab latest JSON
+    let fetch_latest = || async {
+        cache
+            .get::<serde_json::Value>(&redis_key)
+            .await
+            .ok()
+            .flatten()
+            .map(|v| v.to_string())
+    };
+
+    // Send initial snapshot if present
+    let mut last_sent = fetch_latest().await;
+    if let Some(snapshot) = &last_sent {
+        let _ = socket.send(Message::Text(snapshot.clone())).await;
+    }
+
+    // Stream of Redis events
+    let mut redis_stream = pubsub.on_message();
+
+    loop {
+        tokio::select! {
+            // Client closed WebSocket
+            maybe_msg = socket.recv().fuse() => {
+                if maybe_msg.is_none() {
+                    break;
+                }
+            }
+            // Redis published an event
+            Some(_msg) = redis_stream.next() => {
+                if let Some(current) = fetch_latest().await {
+                    if Some(&current) != last_sent.as_ref() {
+                        last_sent = Some(current.clone());
+                        let _ = socket.send(Message::Text(current)).await;
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub trait ParameterUtil {

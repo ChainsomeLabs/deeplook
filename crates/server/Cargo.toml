@@ -26,15 +26,18 @@ anyhow.workspace = true
 serde_json.workspace = true
 url.workspace = true
 prometheus.workspace = true
+redis.workspace = true
 sui-types.workspace = true
 tokio-util.workspace = true
 sui-indexer-alt-metrics.workspace = true
 telemetry-subscribers.workspace = true
-axum = { version = "0.7", features = ["json"] }
+axum = { version = "0.7", features = ["json", "ws"] }
 sui-json-rpc-types = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
 sui-pg-db = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
 tower-http = { version = "0.5", features = ["cors"] }
-sui-sdk = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
+sui-sdk.workspace = true
+
+deeplook-cache = { path = "../cache" }
 
 [[bin]]
 name = "deeplook-server"
