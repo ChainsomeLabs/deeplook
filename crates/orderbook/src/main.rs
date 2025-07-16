@@ -4,7 +4,6 @@ use deeplook_cache::Cache;
 use deeplook_indexer::{DeeplookEnv, MAINNET_REMOTE_STORE_URL};
 use deeplook_orderbook::OrderbookManagerMap;
 use deeplook_orderbook::checkpoint::CheckpointDigest;
-use deeplook_orderbook::handlers::orderbook_order_fill_handler::OrderbookOrderFillHandler;
 use deeplook_orderbook::handlers::orderbook_order_update_handler::OrderbookOrderUpdateHandler;
 use deeplook_orderbook::orderbook::OrderbookManager;
 use diesel::{Connection, PgConnection, RunQueryDsl};
@@ -121,12 +120,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let arc_manager_map = Arc::new(ob_manager_map);
 
-    indexer
-        .concurrent_pipeline(
-            OrderbookOrderFillHandler::new(env, arc_manager_map.clone()),
-            Default::default(),
-        )
-        .await?;
     indexer
         .concurrent_pipeline(
             OrderbookOrderUpdateHandler::new(env, arc_manager_map),

@@ -2,7 +2,7 @@ IMAGE := postgres:17
 CONTAINER_NAME := deeplook-db
 REDIS_IMAGE := redis:8.0.3-alpine
 REDIS_CONTAINER_NAME := deeplook-redis
-DB_NAME := deeplook_v2
+DB_NAME := deeplook
 USER_NAME := postgres
 PASSWORD := postgres
 MIGRATION_DIR := crates/schema/migrations
@@ -14,7 +14,7 @@ postgres:
 	docker run --name $(CONTAINER_NAME) -p 5432:5432 -e POSTGRES_USER=$(USER_NAME) -e POSTGRES_PASSWORD=$(PASSWORD) -d $(IMAGE) 
 
 redis:
-	docker run --name $(REDIS_CONTAINER_NAME) -p 6379:6379 -d $(REDIS_IMAGE) 
+	docker run --name $(REDIS_CONTAINER_NAME) -p 6379:6379 -d $(REDIS_IMAGE) redis-server --notify-keyspace-events 'K$$'
 
 createdb:
 	docker exec -it $(CONTAINER_NAME) createdb --user=$(USER_NAME) --owner=$(USER_NAME) $(DB_NAME)
