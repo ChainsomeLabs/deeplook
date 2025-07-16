@@ -3,9 +3,9 @@ use crate::handlers::{is_deepbook_tx, try_extract_move_call_package};
 
 use deeplook_indexer::DeeplookEnv;
 use deeplook_indexer::models::deepbook::order::{OrderCanceled, OrderModified};
-use deeplook_indexer::models::deepbook::order_info::{OrderExpired, OrderPlaced};
+use deeplook_indexer::models::deepbook::order_info::{OrderExpired, OrderFilled, OrderPlaced};
 use deeplook_indexer::utils::ms_to_secs;
-use deeplook_schema::models::{OrderUpdate, OrderUpdateStatus};
+use deeplook_schema::models::{OrderFill, OrderUpdate, OrderUpdateStatus};
 use move_core_types::language_storage::StructTag;
 use std::sync::Arc;
 use sui_indexer_alt_framework::db::{Connection, Db};
@@ -20,6 +20,7 @@ pub struct OrderbookOrderUpdateHandler {
     order_modified_type: StructTag,
     order_canceled_type: StructTag,
     order_expired_type: StructTag,
+    order_filled_type: StructTag,
     orderbook_managers: Arc<OrderbookManagerMap>,
 }
 
@@ -30,6 +31,7 @@ impl OrderbookOrderUpdateHandler {
             order_modified_type: env.order_modified_event_type(),
             order_canceled_type: env.order_canceled_event_type(),
             order_expired_type: env.order_expired_event_type(),
+            order_filled_type: env.order_filled_event_type(),
             orderbook_managers,
         }
     }
@@ -96,6 +98,15 @@ impl Processor for OrderbookOrderUpdateHandler {
                             if let Some(ob_m) = self.orderbook_managers.get(&order_update.pool_id) {
                                 if let Ok(mut locked) = ob_m.lock() {
                                     locked.handle_update(order_update);
+                                }
+                            }
+                        }
+                    } else if ev.type_ == self.order_filled_type {
+                        if let Ok(event) = bcs::from_bytes(&ev.contents) {
+                            let order_filled = process_order_filled(event, metadata.clone(), index);
+                            if let Some(ob_m) = self.orderbook_managers.get(&order_filled.pool_id) {
+                                if let Ok(mut locked) = ob_m.lock() {
+                                    locked.handle_fill(order_filled);
                                 }
                             }
                         }
@@ -234,5 +245,38 @@ fn process_order_expired(
             - order_expired.base_asset_quantity_canceled) as i64,
         trader: order_expired.trader.to_string(),
         balance_manager_id: order_expired.balance_manager_id.to_string(),
+    }
+}
+
+fn process_order_filled(
+    order_filled: OrderFilled,
+    (sender, checkpoint, checkpoint_timestamp_ms, digest, package): TransactionMetadata,
+    event_index: usize,
+) -> OrderFill {
+    let event_digest = format!("{digest}{event_index}");
+    OrderFill {
+        digest,
+        event_digest,
+        sender,
+        checkpoint: checkpoint as i64,
+        checkpoint_timestamp_ms: checkpoint_timestamp_ms as i64,
+        timestamp: ms_to_secs(checkpoint_timestamp_ms as i64),
+        package,
+        pool_id: order_filled.pool_id.to_string(),
+        maker_order_id: order_filled.maker_order_id.to_string(),
+        taker_order_id: order_filled.taker_order_id.to_string(),
+        maker_client_order_id: order_filled.maker_client_order_id as i64,
+        taker_client_order_id: order_filled.taker_client_order_id as i64,
+        price: order_filled.price as i64,
+        taker_is_bid: order_filled.taker_is_bid,
+        taker_fee: order_filled.taker_fee as i64,
+        taker_fee_is_deep: order_filled.taker_fee_is_deep,
+        maker_fee: order_filled.maker_fee as i64,
+        maker_fee_is_deep: order_filled.maker_fee_is_deep,
+        base_quantity: order_filled.base_quantity as i64,
+        quote_quantity: order_filled.quote_quantity as i64,
+        maker_balance_manager_id: order_filled.maker_balance_manager_id.to_string(),
+        taker_balance_manager_id: order_filled.taker_balance_manager_id.to_string(),
+        onchain_timestamp: order_filled.timestamp as i64,
     }
 }
