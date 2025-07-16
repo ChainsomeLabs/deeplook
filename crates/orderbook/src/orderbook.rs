@@ -385,7 +385,8 @@ impl OrderbookManager {
                 self.subtract_order(order.price, order.quantity, order.is_bid);
             }
             OrderUpdateStatus::Modified => {
-                self.subtract_order(order.price, order.quantity, order.is_bid)
+                let to_sub = order.original_quantity - order.quantity;
+                self.subtract_order(order.price, to_sub, order.is_bid)
             }
         }
         // upload new state to Redis
