@@ -371,12 +371,7 @@ impl OrderbookManager {
                 self.subtract_order(order.price, order.quantity, order.is_bid);
             }
             OrderUpdateStatus::Modified => {
-                println!(
-                    "modified, order: {:?}\norderbook: {}",
-                    order,
-                    serde_json::to_string(&self.orderbook).unwrap()
-                );
-                // TODO: handle order modified
+                self.subtract_order(order.price, order.quantity, order.is_bid)
             }
         }
         // upload new state to Redis
