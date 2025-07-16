@@ -1483,7 +1483,6 @@ async fn orderbook_ws(
     ws.on_upgrade(move |socket| handle_orderbook_socket(socket, pool_name, state.0.clone()))
 }
 
-
 async fn orderbook_bests_ws(
     ws: WebSocketUpgrade,
     Path(pool_name): Path<String>,
@@ -1593,7 +1592,7 @@ async fn handle_bests_socket(mut socket: WebSocket, pool_name: String, state: Ar
     if let Ok(message) = stringified {
         let _ = socket.send(Message::Text(message)).await;
     };
-    
+
     // Stream of Redis events
     let mut redis_stream = pubsub.on_message();
 
@@ -1613,7 +1612,7 @@ async fn handle_bests_socket(mut socket: WebSocket, pool_name: String, state: Ar
 
                         let bests = get_bests_from_redis_orderbook(last_sent.clone());
                         let stringified = serde_json::to_string(&bests);
-                        
+
                         if let Ok(message) = stringified {
                             let _ = socket.send(Message::Text(message)).await;
                         }
@@ -1623,7 +1622,6 @@ async fn handle_bests_socket(mut socket: WebSocket, pool_name: String, state: Ar
         }
     }
 }
-
 
 async fn handle_spread_socket(mut socket: WebSocket, pool_name: String, state: Arc<AppState>) {
     // Redis key that stores the order‑book JSON
@@ -1662,7 +1660,7 @@ async fn handle_spread_socket(mut socket: WebSocket, pool_name: String, state: A
     if let Ok(message) = stringified {
         let _ = socket.send(Message::Text(message)).await;
     };
-    
+
     // Stream of Redis events
     let mut redis_stream = pubsub.on_message();
 
@@ -1683,7 +1681,7 @@ async fn handle_spread_socket(mut socket: WebSocket, pool_name: String, state: A
                         let bests = get_bests_from_redis_orderbook(last_sent.clone());
                         let spread = get_spread_from_bests(bests);
                         let stringified = serde_json::to_string(&spread);
-                        
+
                         if let Ok(message) = stringified {
                             let _ = socket.send(Message::Text(message)).await;
                         }
@@ -1699,29 +1697,29 @@ fn get_spread_from_bests(bests: Option<HashMap<String, HashMap<String, f64>>>) -
 
     let ask_price = map.get("asks")?.get("price")?;
     let bid_price = map.get("bids")?.get("price")?;
-        
+
     Some(ask_price - bid_price)
 }
 
-fn get_bests_from_redis_orderbook(value: Option<Value>) -> Option<HashMap<String, HashMap<String, f64>>> {
+fn get_bests_from_redis_orderbook(
+    value: Option<Value>,
+) -> Option<HashMap<String, HashMap<String, f64>>> {
     let ob = parse_orderbook_from_redis(value?)?;
 
     let best_ask = ob.get("asks")?.first()?;
     let best_bid = ob.get("bids")?.first()?;
 
-    let res = HashMap::from(
-        [
-            ("asks".to_string(), best_ask.clone()),
-            ("bids".to_string(), best_bid.clone()),
-        ]
-    );
+    let res = HashMap::from([
+        ("asks".to_string(), best_ask.clone()),
+        ("bids".to_string(), best_bid.clone()),
+    ]);
 
-    Some(res)    
+    Some(res)
 }
 
 fn parse_orderbook_from_redis(value: Value) -> Option<HashMap<String, Vec<HashMap<String, f64>>>> {
     let ob = value.as_object()?;
-    
+
     let asks_raw = ob.get("asks")?.as_array()?;
     let bids_raw = ob.get("bids")?.as_array()?;
 
@@ -1734,27 +1732,16 @@ fn parse_orderbook_from_redis(value: Value) -> Option<HashMap<String, Vec<HashMa
         .iter()
         .filter_map(|v| serde_json::from_value(v.clone()).ok())
         .collect();
-    
-    asks.sort_by(|a, b| {
-        a.get("price").partial_cmp(&b.get("price"))
-        .unwrap()
-    });
-    
-    bids.sort_by(|a, b| {
-        b.get("price").partial_cmp(&a.get("price"))
-        .unwrap()
-    });
 
-    Some(
-        HashMap::from(
-            [
-                ("asks".to_string(), asks),
-                ("bids".to_string(), bids),
-            ]
-        )
-    )
+    asks.sort_by(|a, b| a.get("price").partial_cmp(&b.get("price")).unwrap());
+
+    bids.sort_by(|a, b| b.get("price").partial_cmp(&a.get("price")).unwrap());
+
+    Some(HashMap::from([
+        ("asks".to_string(), asks),
+        ("bids".to_string(), bids),
+    ]))
 }
-
 
 pub trait ParameterUtil {
     fn start_time(&self) -> Option<i64>;
