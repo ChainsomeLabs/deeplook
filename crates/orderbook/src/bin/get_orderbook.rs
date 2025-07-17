@@ -22,6 +22,8 @@ fn store_initial_snapshot(pool_id: &str, end_time: NaiveDateTime, database_url: 
     let period = Duration::days(10);
     let mut snapshot = None;
 
+    let mut conn = PgConnection::establish(&database_url.as_str()).expect("Error connecting to DB");
+
     while segment_end_time < end_time {
         println!("Segment end time: {}", segment_end_time);
         snapshot = Some(
@@ -29,13 +31,14 @@ fn store_initial_snapshot(pool_id: &str, end_time: NaiveDateTime, database_url: 
                 .expect("failed generating orderbook snapshot"),
         );
         segment_end_time += period;
-    }
-    let mut conn = PgConnection::establish(&database_url.as_str()).expect("Error connecting to DB");
 
-    diesel::insert_into(orderbook_snapshots::table)
-        .values(&snapshot)
-        .execute(&mut conn)
-        .expect("Failed storing snapshot");
+        if let Some(snp) = snapshot.clone() {
+            diesel::insert_into(orderbook_snapshots::table)
+                .values(&snp)
+                .execute(&mut conn)
+                .expect("Failed storing snapshot");
+        }
+    }
 }
 
 #[tokio::main]
