@@ -10,6 +10,7 @@ use crate::orderbook::OrderbookManager;
 pub mod checkpoint;
 pub mod error;
 pub mod handlers;
+pub mod historic_orderbook;
 pub mod orderbook;
 
 /// Get orderbook manager by pool_id or pool_name
