@@ -66,10 +66,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .load::<Pool>(&mut db_connection)
         .expect("Failed getting pools from db");
 
-    let current_checkpoint = CheckpointDigest::get_sequence_number(sui_client.clone().into())
-        .await
-        .expect("Failed getting current checkpoint");
-
     let mut ob_manager_map: OrderbookManagerMap = HashMap::new();
 
     for pool in pools {
@@ -99,7 +95,8 @@ async fn main() -> Result<(), anyhow::Error> {
         database_url,
         DbArgs::default(),
         IndexerArgs {
-            first_checkpoint: Some(current_checkpoint - 100),
+            // TODO: lowest checkpoint of all the ob_managers
+            first_checkpoint: Some(160000000),
             last_checkpoint: None,
             pipeline: vec![],
             skip_watermark: true,
