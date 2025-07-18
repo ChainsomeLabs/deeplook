@@ -75,12 +75,12 @@ async fn main() -> Result<(), anyhow::Error> {
     for pool in pools {
         let name = pool.pool_name.to_string();
         let id = pool.pool_id.to_string();
-        let mut ob_manager =
-            OrderbookManager::new(pool, sui_client.clone().into(), Mutex::new(cache.clone()));
-        if ob_manager.sync().await.is_err() {
-            println!("Failed syncing {}", name);
-            continue;
-        }
+        let ob_manager = OrderbookManager::new(
+            pool,
+            sui_client.clone().into(),
+            Mutex::new(cache.clone()),
+            database_url.clone(),
+        );
         let arc = Arc::new(Mutex::new(ob_manager));
         ob_manager_map.insert(name, arc.clone());
         ob_manager_map.insert(id, arc);

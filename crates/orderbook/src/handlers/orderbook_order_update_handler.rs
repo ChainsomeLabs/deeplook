@@ -7,6 +7,7 @@ use deeplook_indexer::models::deepbook::order_info::{OrderExpired, OrderFilled, 
 use deeplook_indexer::utils::ms_to_secs;
 use deeplook_schema::models::{OrderFill, OrderUpdate, OrderUpdateStatus};
 use move_core_types::language_storage::StructTag;
+use std::collections::HashMap;
 use std::sync::Arc;
 use sui_indexer_alt_framework::db::{Connection, Db};
 use sui_indexer_alt_framework::pipeline::Processor;
@@ -41,79 +42,91 @@ impl Processor for OrderbookOrderUpdateHandler {
     const NAME: &'static str = "order_update";
     type Value = OrderUpdate;
     fn process(&self, checkpoint: &Arc<CheckpointData>) -> anyhow::Result<Vec<Self::Value>> {
-        checkpoint
-            .transactions
-            .iter()
-            .try_fold(vec![], |result, tx| {
-                if !is_deepbook_tx(tx) {
-                    return Ok(result);
-                }
-                let Some(events) = &tx.events else {
-                    return Ok(result);
-                };
+        let mut updates: HashMap<String, Vec<OrderUpdate>> = HashMap::new();
+        let mut fills: HashMap<String, Vec<OrderFill>> = HashMap::new();
 
-                let package = try_extract_move_call_package(tx).unwrap_or_default();
-                let metadata = (
-                    tx.transaction.sender_address().to_string(),
-                    checkpoint.checkpoint_summary.sequence_number,
-                    checkpoint.checkpoint_summary.timestamp_ms,
-                    tx.transaction.digest().to_string(),
-                    package.clone(),
-                );
+        for tx in checkpoint.transactions.iter() {
+            if !is_deepbook_tx(tx) {
+                continue;
+            }
+            let Some(events) = &tx.events else {
+                continue;
+            };
 
-                for (index, ev) in events.data.iter().enumerate() {
-                    if ev.type_ == self.order_placed_type {
-                        if let Ok(event) = bcs::from_bytes(&ev.contents) {
-                            let order_update = process_order_placed(event, metadata.clone(), index);
-                            if let Some(ob_m) = self.orderbook_managers.get(&order_update.pool_id) {
-                                if let Ok(mut locked) = ob_m.lock() {
-                                    locked.handle_update(order_update);
-                                }
-                            }
-                        }
-                    } else if ev.type_ == self.order_modified_type {
-                        if let Ok(event) = bcs::from_bytes(&ev.contents) {
-                            let order_update =
-                                process_order_modified(event, metadata.clone(), index);
-                            if let Some(ob_m) = self.orderbook_managers.get(&order_update.pool_id) {
-                                if let Ok(mut locked) = ob_m.lock() {
-                                    locked.handle_update(order_update);
-                                }
-                            }
-                        }
-                    } else if ev.type_ == self.order_canceled_type {
-                        if let Ok(event) = bcs::from_bytes(&ev.contents) {
-                            let order_update =
-                                process_order_canceled(event, metadata.clone(), index);
-                            if let Some(ob_m) = self.orderbook_managers.get(&order_update.pool_id) {
-                                if let Ok(mut locked) = ob_m.lock() {
-                                    locked.handle_update(order_update);
-                                }
-                            }
-                        }
-                    } else if ev.type_ == self.order_expired_type {
-                        if let Ok(event) = bcs::from_bytes(&ev.contents) {
-                            let order_update =
-                                process_order_expired(event, metadata.clone(), index);
-                            if let Some(ob_m) = self.orderbook_managers.get(&order_update.pool_id) {
-                                if let Ok(mut locked) = ob_m.lock() {
-                                    locked.handle_update(order_update);
-                                }
-                            }
-                        }
-                    } else if ev.type_ == self.order_filled_type {
-                        if let Ok(event) = bcs::from_bytes(&ev.contents) {
-                            let order_filled = process_order_filled(event, metadata.clone(), index);
-                            if let Some(ob_m) = self.orderbook_managers.get(&order_filled.pool_id) {
-                                if let Ok(mut locked) = ob_m.lock() {
-                                    locked.handle_fill(order_filled);
-                                }
-                            }
-                        }
+            let package = try_extract_move_call_package(tx).unwrap_or_default();
+            let metadata = (
+                tx.transaction.sender_address().to_string(),
+                checkpoint.checkpoint_summary.sequence_number,
+                checkpoint.checkpoint_summary.timestamp_ms,
+                tx.transaction.digest().to_string(),
+                package.clone(),
+            );
+
+            for (index, ev) in events.data.iter().enumerate() {
+                if ev.type_ == self.order_placed_type {
+                    if let Ok(event) = bcs::from_bytes(&ev.contents) {
+                        let order_update = process_order_placed(event, metadata.clone(), index);
+
+                        updates
+                            .entry(order_update.pool_id.clone())
+                            .or_insert_with(Vec::new)
+                            .push(order_update);
+                    }
+                } else if ev.type_ == self.order_modified_type {
+                    if let Ok(event) = bcs::from_bytes(&ev.contents) {
+                        let order_update = process_order_modified(event, metadata.clone(), index);
+
+                        updates
+                            .entry(order_update.pool_id.clone())
+                            .or_insert_with(Vec::new)
+                            .push(order_update);
+                    }
+                } else if ev.type_ == self.order_canceled_type {
+                    if let Ok(event) = bcs::from_bytes(&ev.contents) {
+                        let order_update = process_order_canceled(event, metadata.clone(), index);
+
+                        updates
+                            .entry(order_update.pool_id.clone())
+                            .or_insert_with(Vec::new)
+                            .push(order_update);
+                    }
+                } else if ev.type_ == self.order_expired_type {
+                    if let Ok(event) = bcs::from_bytes(&ev.contents) {
+                        let order_update = process_order_expired(event, metadata.clone(), index);
+
+                        updates
+                            .entry(order_update.pool_id.clone())
+                            .or_insert_with(Vec::new)
+                            .push(order_update);
+                    }
+                } else if ev.type_ == self.order_filled_type {
+                    if let Ok(event) = bcs::from_bytes(&ev.contents) {
+                        let order_filled = process_order_filled(event, metadata.clone(), index);
+
+                        fills
+                            .entry(order_filled.pool_id.clone())
+                            .or_insert_with(Vec::new)
+                            .push(order_filled);
                     }
                 }
-                Ok(vec![])
-            })
+            }
+        }
+
+        for (pool_id, orders) in updates {
+            if let Some(ob_m) = self.orderbook_managers.get(&pool_id) {
+                if let Ok(mut locked) = ob_m.lock() {
+                    locked.handle_update_multiple(orders);
+                }
+            }
+        }
+        for (pool_id, orders) in fills {
+            if let Some(ob_m) = self.orderbook_managers.get(&pool_id) {
+                if let Ok(mut locked) = ob_m.lock() {
+                    locked.handle_fill_multiple(orders);
+                }
+            }
+        }
+        Ok(vec![])
     }
 }
 

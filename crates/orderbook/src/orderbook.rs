@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     str::FromStr,
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
@@ -6,6 +7,7 @@ use std::{
 
 use deeplook_cache::Cache;
 use deeplook_schema::models::{OrderFill, OrderUpdate, OrderUpdateStatus, Pool};
+use diesel::{Connection, PgConnection};
 use serde::Serialize;
 use sui_sdk::{
     SuiClient,
@@ -18,8 +20,11 @@ use sui_types::{
     transaction::{Argument, CallArg, Command, ObjectArg, ProgrammableMoveCall, TransactionKind},
     type_input::TypeInput,
 };
+use url::Url;
 
-use crate::{error::DeepLookOrderbookError, extract_timestamp};
+use crate::{
+    error::DeepLookOrderbookError, extract_timestamp, historic_orderbook::get_latest_snapshot,
+};
 
 pub const DEEPBOOK_PACKAGE_ID: &str =
     "0x2c8d603bc51326b8c13cef9dd07031a408a48dddb541963357661df5d3204809";
@@ -55,7 +60,7 @@ pub struct OrderbookReadable {
 pub struct OrderbookManager {
     pub pool: Pool,
     pub orderbook: Orderbook,
-    pub initial_ts: Option<u64>,
+    pub initial_checkpoint: i64,
     pub sui_client: Arc<SuiClient>,
     cache: Mutex<Cache>,
     price_factor: u64,
@@ -63,30 +68,55 @@ pub struct OrderbookManager {
 }
 
 impl OrderbookManager {
-    pub fn new(pool: Pool, sui_client: Arc<SuiClient>, cache: Mutex<Cache>) -> Self {
+    pub fn new(
+        pool: Pool,
+        sui_client: Arc<SuiClient>,
+        cache: Mutex<Cache>,
+        database_url: Url,
+    ) -> Self {
         let base_decimals = pool.base_asset_decimals as u32;
         let quote_decimals = pool.quote_asset_decimals as u32;
         let price_factor = (10u64).pow(9 - base_decimals + quote_decimals);
         let size_factor = (10u64).pow(base_decimals);
+
+        let snapshot = get_latest_snapshot(
+            &mut PgConnection::establish(&database_url.as_str()).expect("Error connecting to DB"),
+            pool.pool_id.as_str(),
+        )
+        // TODO: handle this better
+        .expect("failed getting snapshot")
+        .expect("got None instead of snapshot");
+
+        // TODO: maybe use HashMap instead of Orders?
+        let asks_map: HashMap<i64, i64> =
+            serde_json::from_value(snapshot.asks).expect("failed parsing asks");
+        let bids_map: HashMap<i64, i64> =
+            serde_json::from_value(snapshot.bids).expect("failed parsing bids");
+
+        let asks: Vec<Order> = asks_map
+            .iter()
+            .map(|(&price, &size)| Order {
+                price: price as u64,
+                size: size as u64,
+            })
+            .collect();
+        let bids: Vec<Order> = bids_map
+            .iter()
+            .map(|(&price, &size)| Order {
+                price: price as u64,
+                size: size as u64,
+            })
+            .collect();
+
         OrderbookManager {
             pool,
-            initial_ts: None,
+            initial_checkpoint: snapshot.checkpoint,
             sui_client,
-            orderbook: Orderbook {
-                asks: vec![],
-                bids: vec![],
-            },
+            orderbook: Orderbook { asks, bids },
             cache,
             price_factor,
             size_factor,
         }
-    }
-
-    pub async fn sync(&mut self) -> Result<(), DeepLookOrderbookError> {
-        let (ob, ts) = self.get_onchain_orderbook().await?;
-        self.initial_ts = Some(ts);
-        self.orderbook = ob;
-        Ok(())
     }
 
     pub async fn get_onchain_orderbook(&self) -> Result<(Orderbook, u64), DeepLookOrderbookError> {
@@ -266,16 +296,10 @@ impl OrderbookManager {
         Ok((Orderbook { asks, bids }, now))
     }
 
-    fn should_skip_order(&self, ts: u64) -> bool {
-        let initial_ts = match &self.initial_ts {
-            Some(ch) => ch,
-            None => {
-                return true;
-            }
-        };
-
-        if initial_ts > &ts {
+    fn should_skip_order(&self, checkpoint: i64) -> bool {
+        if self.initial_checkpoint >= checkpoint {
             // old event, skip
+            // start with initial_checkpoint + 1
             return true;
         }
 
@@ -361,17 +385,24 @@ impl OrderbookManager {
     }
 
     pub fn handle_fill(&mut self, order: OrderFill) {
-        if self.should_skip_order(order.onchain_timestamp as u64) {
+        if self.should_skip_order(order.checkpoint) {
             return;
         }
 
         self.subtract_order(order.price, order.base_quantity, !order.taker_is_bid);
+    }
+
+    pub fn handle_fill_multiple(&mut self, orders: Vec<OrderFill>) {
+        for order in orders {
+            self.handle_fill(order);
+        }
+
         // upload new state to Redis
         self.update_orderbook();
     }
 
     pub fn handle_update(&mut self, order: OrderUpdate) {
-        if self.should_skip_order(order.onchain_timestamp as u64) {
+        if self.should_skip_order(order.checkpoint) {
             return;
         }
         match order.status {
@@ -388,6 +419,13 @@ impl OrderbookManager {
                 self.subtract_order(order.price, order.quantity, order.is_bid)
             }
         }
+    }
+
+    pub fn handle_update_multiple(&mut self, orders: Vec<OrderUpdate>) {
+        for order in orders {
+            self.handle_update(order);
+        }
+
         // upload new state to Redis
         self.update_orderbook();
     }
