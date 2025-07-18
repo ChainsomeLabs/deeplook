@@ -66,21 +66,17 @@ async fn main() -> Result<(), anyhow::Error> {
         .load::<Pool>(&mut db_connection)
         .expect("Failed getting pools from db");
 
-    let current_checkpoint = CheckpointDigest::get_sequence_number(sui_client.clone().into())
-        .await
-        .expect("Failed getting current checkpoint");
-
     let mut ob_manager_map: OrderbookManagerMap = HashMap::new();
 
     for pool in pools {
         let name = pool.pool_name.to_string();
         let id = pool.pool_id.to_string();
-        let mut ob_manager =
-            OrderbookManager::new(pool, sui_client.clone().into(), Mutex::new(cache.clone()));
-        if ob_manager.sync().await.is_err() {
-            println!("Failed syncing {}", name);
-            continue;
-        }
+        let ob_manager = OrderbookManager::new(
+            pool,
+            sui_client.clone().into(),
+            Mutex::new(cache.clone()),
+            database_url.clone(),
+        );
         let arc = Arc::new(Mutex::new(ob_manager));
         ob_manager_map.insert(name, arc.clone());
         ob_manager_map.insert(id, arc);
@@ -99,7 +95,8 @@ async fn main() -> Result<(), anyhow::Error> {
         database_url,
         DbArgs::default(),
         IndexerArgs {
-            first_checkpoint: Some(current_checkpoint - 100),
+            // TODO: lowest checkpoint of all the ob_managers
+            first_checkpoint: Some(160000000),
             last_checkpoint: None,
             pipeline: vec![],
             skip_watermark: true,

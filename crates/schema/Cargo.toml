@@ -19,5 +19,6 @@ diesel = { workspace = true, features = [
 ] }
 diesel_migrations.workspace = true
 serde = { workspace = true }
+serde_json.workspace = true
 strum = "0.27.1"
 strum_macros = "0.27.1"

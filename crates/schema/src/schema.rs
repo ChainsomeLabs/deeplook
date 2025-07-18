@@ -102,6 +102,16 @@ diesel::table! {
 }
 
 diesel::table! {
+    orderbook_snapshots (pool_id, checkpoint) {
+        checkpoint -> Int8,
+        pool_id -> Text,
+        asks -> Jsonb,
+        bids -> Jsonb,
+        timestamp -> Timestamp,
+    }
+}
+
+diesel::table! {
     pool_prices (event_digest, timestamp) {
         event_digest -> Text,
         digest -> Text,
@@ -237,12 +247,26 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    watermarks (pipeline) {
+        pipeline -> Text,
+        epoch_hi_inclusive -> Int8,
+        checkpoint_hi_inclusive -> Int8,
+        tx_hi -> Int8,
+        timestamp_ms_hi_inclusive -> Int8,
+        reader_lo -> Int8,
+        pruner_timestamp -> Timestamp,
+        pruner_hi -> Int8,
+    }
+}
+
 diesel::allow_tables_to_appear_in_same_query!(
     assets,
     balances,
     flashloans,
     order_fills,
     order_updates,
+    orderbook_snapshots,
     pool_prices,
     pools,
     proposals,
@@ -250,7 +274,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     stakes,
     sui_error_transactions,
     trade_params_update,
-    votes
+    votes,
+    watermarks,
 );
 
 diesel::table! {

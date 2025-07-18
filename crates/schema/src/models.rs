@@ -1,6 +1,7 @@
 use crate::schema::{
-    balances, balances_summary, flashloans, order_fills, order_updates, pool_prices, pools,
-    proposals, rebates, stakes, sui_error_transactions, trade_params_update, votes,
+    balances, balances_summary, flashloans, order_fills, order_updates, orderbook_snapshots,
+    pool_prices, pools, proposals, rebates, stakes, sui_error_transactions, trade_params_update,
+    votes,
 };
 use crate::view::ohlcv_1min;
 use bigdecimal::BigDecimal;
@@ -279,4 +280,14 @@ pub struct OHLCV1min {
     pub close: i64,
     pub volume_base: BigDecimal,
     pub volume_quote: BigDecimal,
+}
+
+#[derive(Debug, Clone, Queryable, Insertable, Serialize, Deserialize)]
+#[diesel(table_name = orderbook_snapshots)]
+pub struct OrderbookSnapshot {
+    pub checkpoint: i64,
+    pub pool_id: String,
+    pub asks: serde_json::Value,
+    pub bids: serde_json::Value,
+    pub timestamp: NaiveDateTime,
 }
