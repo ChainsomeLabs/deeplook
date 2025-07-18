@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::{Duration, NaiveDateTime};
+use chrono::NaiveDateTime;
 use clap::Parser;
 use diesel::{Connection, PgConnection, Queryable};
 use url::Url;
@@ -54,6 +54,16 @@ struct OrderStep {
     pub timestamp: NaiveDateTime,
 }
 
+#[derive(Debug)]
+pub enum HistoricOrderbookError {
+    StartGreaterThanEnd,
+    FailedSerializeSide,
+    NegativeOrder,
+    Overlap,
+    NoTimestampInRange,
+    FailedReadingFromDatabase(diesel::result::Error),
+}
+
 fn status_to_operation(status: &str) -> Op {
     match status {
         "Placed" => Op::Add,
@@ -68,15 +78,14 @@ fn status_to_operation(status: &str) -> Op {
 
 fn get_txs(
     pool_id: &str,
-    start_time: NaiveDateTime,
-    end_time: NaiveDateTime,
     start_checkpoint: i64,
+    end_checkpoint: i64,
     mut conn: PgConnection,
-) -> Result<(Vec<OrderStep>, i64, NaiveDateTime), anyhow::Error> {
+) -> Result<(Vec<OrderStep>, NaiveDateTime), HistoricOrderbookError> {
     let updates: Vec<OrderStep> = schema::order_updates::table
         .filter(schema::order_updates::pool_id.eq(&pool_id))
-        .filter(schema::order_updates::timestamp.between(start_time, end_time))
         .filter(schema::order_updates::checkpoint.gt(start_checkpoint))
+        .filter(schema::order_updates::checkpoint.le(end_checkpoint))
         .select((
             schema::order_updates::price,
             schema::order_updates::quantity,
@@ -85,7 +94,8 @@ fn get_txs(
             schema::order_updates::checkpoint,
             schema::order_updates::is_bid,
         ))
-        .load::<OrderUpdateSummary>(&mut conn)?
+        .load::<OrderUpdateSummary>(&mut conn)
+        .map_err(|e| HistoricOrderbookError::FailedReadingFromDatabase(e))?
         .into_iter()
         .map(|u| OrderStep {
             price: u.price,
@@ -98,8 +108,8 @@ fn get_txs(
         .collect();
     let fills: Vec<OrderStep> = schema::order_fills::table
         .filter(schema::order_fills::pool_id.eq(&pool_id))
-        .filter(schema::order_fills::timestamp.between(start_time, end_time))
         .filter(schema::order_fills::checkpoint.gt(start_checkpoint))
+        .filter(schema::order_fills::checkpoint.le(end_checkpoint))
         .select((
             schema::order_fills::price,
             schema::order_fills::base_quantity,
@@ -107,7 +117,8 @@ fn get_txs(
             schema::order_fills::checkpoint,
             schema::order_fills::taker_is_bid,
         ))
-        .load::<OrderFillSummary>(&mut conn)?
+        .load::<OrderFillSummary>(&mut conn)
+        .map_err(|e| HistoricOrderbookError::FailedReadingFromDatabase(e))?
         .into_iter()
         .map(|u| OrderStep {
             price: u.price,
@@ -121,29 +132,18 @@ fn get_txs(
     let mut combined = updates;
     combined.extend(fills);
 
-    let max_checkpoint = combined
-        .iter()
-        .map(|step| step.checkpoint)
-        .max()
-        .expect("No checkpoints");
-
-    // this will discard max_checkpoint orders since we cannot be certain
-    // that all orders from max_checkpoint are included
-    combined.retain(|o| o.checkpoint < max_checkpoint);
-
-    let max_timestamp = combined
-        .iter()
-        .map(|step| step.timestamp)
-        .max()
-        .expect("No timestamp");
+    let max_timestamp = match combined.iter().map(|step| step.timestamp).max() {
+        Some(v) => v,
+        None => return Err(HistoricOrderbookError::NoTimestampInRange),
+    };
 
     println!(
         "Checkpoints {} - {} inclusive",
         start_checkpoint + 1,
-        max_checkpoint - 1
+        end_checkpoint
     );
 
-    Ok((combined, max_checkpoint - 1, max_timestamp))
+    Ok((combined, max_timestamp))
 }
 
 fn has_overlap(asks: &HashMap<i64, i64>, bids: &HashMap<i64, i64>) -> bool {
@@ -171,7 +171,7 @@ fn values_from_orderbook_option(
         );
     }
     (
-        NaiveDateTime::parse_from_str("2024-10-15 00:00:00", "%Y-%m-%d %H:%M:%S")
+        NaiveDateTime::parse_from_str("2024-10-13 00:00:00", "%Y-%m-%d %H:%M:%S")
             .expect("failed parsing initial time"),
         -1,
         HashMap::new(),
@@ -179,77 +179,97 @@ fn values_from_orderbook_option(
     )
 }
 
+pub fn get_latest_snapshot(
+    conn: &mut PgConnection,
+    target_pool_id: &str,
+) -> Result<Option<OrderbookSnapshot>, diesel::result::Error> {
+    match schema::orderbook_snapshots::table
+        .filter(schema::orderbook_snapshots::pool_id.eq(target_pool_id))
+        .order(schema::orderbook_snapshots::checkpoint.desc())
+        .first::<OrderbookSnapshot>(conn)
+    {
+        Ok(snapshot) => Ok(Some(snapshot)),
+        Err(diesel::result::Error::NotFound) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 pub fn get_historic_orderbook(
     database_url: Url,
     pool_id: &str,
-    end: NaiveDateTime,
-    initial_orderbook: Option<OrderbookSnapshot>,
-) -> Result<OrderbookSnapshot, anyhow::Error> {
-    let offset = Duration::minutes(30);
-    let period = Duration::days(1);
-    let (mut current_time, mut current_checkpoint, mut asks, mut bids) =
-        values_from_orderbook_option(initial_orderbook);
-    let mut timestamp = None;
+    end_checkpoint: i64,
+) -> Result<OrderbookSnapshot, HistoricOrderbookError> {
+    let mut conn = PgConnection::establish(&database_url.as_str()).expect("Error connecting to DB");
 
-    while current_time < end {
-        let call_start = current_time - offset;
-        let call_end = current_time + period + offset;
+    let last_snapshot =
+        get_latest_snapshot(&mut conn, pool_id).expect("failed getting last snapshot");
 
-        let (orders, checkpoint, ts) = get_txs(
-            pool_id,
-            call_start,
-            call_end,
-            current_checkpoint,
-            PgConnection::establish(&database_url.as_str()).expect("Error connecting to DB"),
-        )
-        .expect("failed getting txs");
+    let (_current_time, start_checkpoint, mut asks, mut bids) =
+        values_from_orderbook_option(last_snapshot);
 
-        for order in orders {
-            let side = if order.is_bid { &mut bids } else { &mut asks };
+    if start_checkpoint >= end_checkpoint {
+        return Err(HistoricOrderbookError::StartGreaterThanEnd);
+    }
 
-            side.entry(order.price)
-                .and_modify(|q| match order.op {
-                    Op::Add => *q += order.quantity,
-                    Op::Subtract => *q -= order.quantity,
-                })
-                .or_insert_with(|| match order.op {
-                    Op::Add => order.quantity,
-                    Op::Subtract => -order.quantity,
-                });
-        }
+    let (orders, ts) = get_txs(
+        pool_id,
+        start_checkpoint,
+        end_checkpoint,
+        PgConnection::establish(&database_url.as_str()).expect("Error connecting to DB"),
+    )?;
 
-        current_checkpoint = checkpoint;
-        timestamp = Some(ts);
+    for order in orders {
+        let side = if order.is_bid { &mut bids } else { &mut asks };
 
-        current_time += period;
+        side.entry(order.price)
+            .and_modify(|q| match order.op {
+                Op::Add => *q += order.quantity,
+                Op::Subtract => *q -= order.quantity,
+            })
+            .or_insert_with(|| match order.op {
+                Op::Add => order.quantity,
+                Op::Subtract => -order.quantity,
+            });
     }
 
     bids.retain(|_, &mut qty| qty != 0);
     asks.retain(|_, &mut qty| qty != 0);
 
     for (price, qty) in bids.iter().filter(|(_, q)| q < &&0) {
-        panic!(
+        println!(
             "Negative bid at price {}: {}, pool id {}",
             price, qty, pool_id
         );
+        return Err(HistoricOrderbookError::NegativeOrder);
     }
 
     for (price, qty) in asks.iter().filter(|(_, q)| q < &&0) {
-        panic!(
+        println!(
             "Negative ask at price {}: {}, pool id {}",
             price, qty, pool_id
         );
+        return Err(HistoricOrderbookError::NegativeOrder);
     }
 
     if has_overlap(&asks, &bids) {
-        panic!("Orderbook {} has overlap", pool_id);
+        println!("Orderbook {} has overlap", pool_id);
+        return Err(HistoricOrderbookError::Overlap);
     }
 
+    let asks_serde = match serde_json::to_value(&asks) {
+        Ok(v) => v,
+        Err(_) => return Err(HistoricOrderbookError::FailedSerializeSide),
+    };
+    let bids_serde = match serde_json::to_value(&bids) {
+        Ok(v) => v,
+        Err(_) => return Err(HistoricOrderbookError::FailedSerializeSide),
+    };
+
     Ok(OrderbookSnapshot {
-        checkpoint: current_checkpoint,
+        checkpoint: end_checkpoint,
         pool_id: pool_id.to_string(),
-        asks: serde_json::to_value(&asks)?,
-        bids: serde_json::to_value(&bids)?,
-        timestamp: timestamp.unwrap(),
+        asks: asks_serde,
+        bids: bids_serde,
+        timestamp: ts,
     })
 }

@@ -39,5 +39,5 @@ path = "src/main.rs"
 
 
 [[bin]]
-name = "get-orderbook"
-path = "src/bin/get_orderbook.rs"
+name = "update-snapshots"
+path = "src/bin/update_snapshots.rs"

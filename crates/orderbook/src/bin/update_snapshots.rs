@@ -1,4 +1,3 @@
-use chrono::{Duration, NaiveDateTime};
 use clap::Parser;
 use deeplook_orderbook::historic_orderbook::get_historic_orderbook;
 use deeplook_schema::schema::orderbook_snapshots;
@@ -14,37 +13,41 @@ struct Args {
         default_value = "postgres://postgres:postgrespw@localhost:5432/deeplook"
     )]
     database_url: Url,
+    #[clap(env, long)]
+    end_checkpoint: i64,
 }
 
-fn store_initial_snapshot(pool_id: &str, end_time: NaiveDateTime, database_url: Url) {
-    let mut segment_end_time =
-        NaiveDateTime::parse_from_str("2024-11-15 00:00:00", "%Y-%m-%d %H:%M:%S").unwrap();
-    let period = Duration::days(10);
-    let mut snapshot = None;
+fn store_snapshot(pool_id: &str, end_checkpoint: i64, database_url: Url) {
+    let new_snapshot_result = get_historic_orderbook(database_url.clone(), pool_id, end_checkpoint);
+
+    let new_snapshot = match new_snapshot_result {
+        Ok(v) => v,
+        Err(e) => {
+            println!("{:?}", e);
+            return;
+        }
+    };
 
     let mut conn = PgConnection::establish(&database_url.as_str()).expect("Error connecting to DB");
-
-    while segment_end_time < end_time {
-        println!("Segment end time: {}", segment_end_time);
-        snapshot = Some(
-            get_historic_orderbook(database_url.clone(), pool_id, segment_end_time, snapshot)
-                .expect("failed generating orderbook snapshot"),
-        );
-        segment_end_time += period;
-
-        if let Some(snp) = snapshot.clone() {
-            diesel::insert_into(orderbook_snapshots::table)
-                .values(&snp)
-                .execute(&mut conn)
-                .expect("Failed storing snapshot");
-        }
-    }
+    diesel::insert_into(orderbook_snapshots::table)
+        .values(&new_snapshot)
+        .execute(&mut conn)
+        .expect("Failed storing snapshot");
+    println!(
+        "stored snapshot {}, {}",
+        new_snapshot.checkpoint, new_snapshot.pool_id
+    );
 }
 
+// export DATABASE_URL=...
+// export END_CHECKPOINT=168980000
+// cargo run -p deeplook-orderbook --bin update-snapshots
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let Args { database_url } = Args::parse();
-    let end_time = NaiveDateTime::parse_from_str("2025-07-17 00:00:00", "%Y-%m-%d %H:%M:%S")?;
+    let Args {
+        database_url,
+        end_checkpoint,
+    } = Args::parse();
 
     let pool_ids = vec![
         "0xb663828d6217467c8a1838a03793da896cbe745b150ebd57d82f814ca579fc22",
@@ -65,8 +68,8 @@ async fn main() -> Result<(), anyhow::Error> {
         "0x126865a0197d6ab44bfd15fd052da6db92fd2eb831ff9663451bbfa1219e2af2",
     ];
 
-    for pool_id in pool_ids {
-        store_initial_snapshot(pool_id, end_time, database_url.clone());
+    for pool_id in pool_ids.clone() {
+        store_snapshot(pool_id, end_checkpoint, database_url.clone());
     }
 
     Ok(())
