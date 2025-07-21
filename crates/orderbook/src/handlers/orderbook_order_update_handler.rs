@@ -112,20 +112,20 @@ impl Processor for OrderbookOrderUpdateHandler {
             }
         }
 
-        for (pool_id, orders) in updates {
+        let mut all_pool_ids: Vec<String> = updates.keys().chain(fills.keys()).cloned().collect();
+        all_pool_ids.sort();
+        all_pool_ids.dedup();
+
+        for pool_id in all_pool_ids {
+            let updates: Vec<OrderUpdate> = updates.remove(&pool_id).unwrap_or_else(Vec::new);
+            let fills: Vec<OrderFill> = fills.remove(&pool_id).unwrap_or_else(Vec::new);
             if let Some(ob_m) = self.orderbook_managers.get(&pool_id) {
                 if let Ok(mut locked) = ob_m.lock() {
-                    locked.handle_update_multiple(orders);
+                    locked.handle_batch(updates, fills);
                 }
             }
         }
-        for (pool_id, orders) in fills {
-            if let Some(ob_m) = self.orderbook_managers.get(&pool_id) {
-                if let Ok(mut locked) = ob_m.lock() {
-                    locked.handle_fill_multiple(orders);
-                }
-            }
-        }
+
         Ok(vec![])
     }
 }

@@ -3,10 +3,9 @@ use clap::Parser;
 use deeplook_cache::Cache;
 use deeplook_indexer::{DeeplookEnv, MAINNET_REMOTE_STORE_URL};
 use deeplook_orderbook::OrderbookManagerMap;
-use deeplook_orderbook::checkpoint::CheckpointDigest;
 use deeplook_orderbook::handlers::orderbook_order_update_handler::OrderbookOrderUpdateHandler;
 use deeplook_orderbook::orderbook::OrderbookManager;
-use diesel::{Connection, PgConnection, RunQueryDsl};
+use diesel::{Connection, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl};
 
 use prometheus::Registry;
 use std::collections::HashMap;
@@ -62,9 +61,18 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let cache = Cache::new(redis_url);
 
-    let pools = pools::table
-        .load::<Pool>(&mut db_connection)
-        .expect("Failed getting pools from db");
+    // if None index all pools, if Some index only pool names in the list
+    let whitelisted_pools: Option<Vec<&'static str>> = None; // Some(vec!["SUI_USDC"]);
+
+    let pools = match whitelisted_pools {
+        Some(white_list) => pools::table
+            .filter(pools::pool_name.eq_any(&white_list))
+            .load::<Pool>(&mut db_connection)
+            .expect("Failed getting pools from db"),
+        None => pools::table
+            .load::<Pool>(&mut db_connection)
+            .expect("Failed getting pools from db"),
+    };
 
     let mut ob_manager_map: OrderbookManagerMap = HashMap::new();
 
@@ -96,7 +104,7 @@ async fn main() -> Result<(), anyhow::Error> {
         DbArgs::default(),
         IndexerArgs {
             // TODO: lowest checkpoint of all the ob_managers
-            first_checkpoint: Some(160000000),
+            first_checkpoint: Some(157000000),
             last_checkpoint: None,
             pipeline: vec![],
             skip_watermark: true,

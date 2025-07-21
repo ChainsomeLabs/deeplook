@@ -35,8 +35,8 @@ pub const LEVEL2_FUNCTION: &str = "get_level2_ticks_from_mid";
 
 #[derive(Debug, Serialize, Clone, Copy)]
 pub struct Order {
-    pub size: u64,
-    pub price: u64,
+    pub size: i64,
+    pub price: i64,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -96,15 +96,15 @@ impl OrderbookManager {
         let asks: Vec<Order> = asks_map
             .iter()
             .map(|(&price, &size)| Order {
-                price: price as u64,
-                size: size as u64,
+                price: price,
+                size: size,
             })
             .collect();
         let bids: Vec<Order> = bids_map
             .iter()
             .map(|(&price, &size)| Order {
-                price: price as u64,
-                size: size as u64,
+                price: price,
+                size: size,
             })
             .collect();
 
@@ -278,8 +278,8 @@ impl OrderbookManager {
             .zip(bid_parsed_quantities.into_iter())
             .take(ticks_from_mid as usize)
             .map(|(price, quantity)| Order {
-                price,
-                size: quantity,
+                price: price as i64,
+                size: quantity as i64,
             })
             .collect();
 
@@ -288,8 +288,8 @@ impl OrderbookManager {
             .zip(ask_parsed_quantities.into_iter())
             .take(ticks_from_mid as usize)
             .map(|(price, quantity)| Order {
-                price,
-                size: quantity,
+                price: price as i64,
+                size: quantity as i64,
             })
             .collect();
 
@@ -318,7 +318,37 @@ impl OrderbookManager {
         }
     }
 
+    fn is_valid_orderbook(&self) -> bool {
+        // All sizes must be non-negative
+        let all_sizes_valid = self
+            .orderbook
+            .asks
+            .iter()
+            .chain(self.orderbook.bids.iter())
+            .all(|o| o.size >= 0);
+
+        // Get lowest ask price
+        let min_ask = self.orderbook.asks.iter().map(|o| o.price).min();
+        // Get highest bid price
+        let max_bid = self.orderbook.bids.iter().map(|o| o.price).max();
+
+        let prices_ok = match (min_ask, max_bid) {
+            (Some(ask), Some(bid)) => ask > bid,
+            _ => true, // Valid if either side is empty
+        };
+
+        all_sizes_valid && prices_ok
+    }
+
+    fn remove_zero_orders(&mut self) {
+        self.orderbook.asks.retain(|o| o.size != 0);
+        self.orderbook.bids.retain(|o| o.size != 0);
+    }
+
     fn update_orderbook(&self) {
+        if !self.is_valid_orderbook() {
+            println!("{} is not valid", self.pool.pool_name);
+        }
         let key = format!("orderbook::{}", self.pool.pool_name);
         let ob = self.get_readable_orderbook();
         if let Ok(mut locked_cache) = self.cache.lock() {
@@ -327,9 +357,6 @@ impl OrderbookManager {
     }
 
     fn add_order(&mut self, price: i64, size: i64, is_bid: bool) {
-        let price_u64 = price as u64;
-        let size_u64 = size as u64;
-
         // Decide which side of the book we are working with
         let side = if is_bid {
             &mut self.orderbook.bids
@@ -338,20 +365,14 @@ impl OrderbookManager {
         };
 
         // Try to find an existing order at the same price level
-        if let Some(order) = side.iter_mut().find(|o| o.price == price_u64) {
-            order.size += size_u64;
+        if let Some(order) = side.iter_mut().find(|o| o.price == price) {
+            order.size += size;
         } else {
-            side.push(Order {
-                price: price_u64,
-                size: size_u64,
-            });
+            side.push(Order { price, size });
         }
     }
 
     fn subtract_order(&mut self, price: i64, size: i64, is_bid: bool) {
-        let price_u64 = price as u64;
-        let size_u64 = size.unsigned_abs();
-
         // Decide which side of the book we are working with
         let side = if is_bid {
             &mut self.orderbook.bids
@@ -360,27 +381,10 @@ impl OrderbookManager {
         };
 
         // Try to find an existing order at the same price level
-        if let Some(order) = side.iter_mut().find(|o| o.price == price_u64) {
-            let to_sub = if order.size < size_u64 {
-                println!(
-                    "Unable to subtract whole amount p: {}, q: {}, is_bid: {} for pool {}, current order: {:?}",
-                    price, size, is_bid, self.pool.pool_name, order
-                );
-                order.size
-            } else {
-                size_u64
-            };
-
-            order.size -= to_sub;
-
-            if order.size == 0 {
-                side.retain(|o| o.size > 0);
-            }
+        if let Some(order) = side.iter_mut().find(|o| o.price == price) {
+            order.size -= size;
         } else {
-            println!(
-                "Unable to find level to subtract p: {}, q: {}, is_bid: {} for pool {}",
-                price, size, is_bid, self.pool.pool_name
-            );
+            side.push(Order { price, size: -size });
         }
     }
 
@@ -390,15 +394,6 @@ impl OrderbookManager {
         }
 
         self.subtract_order(order.price, order.base_quantity, !order.taker_is_bid);
-    }
-
-    pub fn handle_fill_multiple(&mut self, orders: Vec<OrderFill>) {
-        for order in orders {
-            self.handle_fill(order);
-        }
-
-        // upload new state to Redis
-        self.update_orderbook();
     }
 
     pub fn handle_update(&mut self, order: OrderUpdate) {
@@ -421,10 +416,44 @@ impl OrderbookManager {
         }
     }
 
-    pub fn handle_update_multiple(&mut self, orders: Vec<OrderUpdate>) {
-        for order in orders {
-            self.handle_update(order);
+    pub fn handle_batch(&mut self, updates: Vec<OrderUpdate>, fills: Vec<OrderFill>) {
+        let updates_count = updates.len();
+        let fills_count = fills.len();
+        let checkpoint_maybe = match (updates.first(), fills.first()) {
+            (Some(update), _) => Some(update.checkpoint),
+            (_, Some(fill)) => Some(fill.checkpoint),
+            (None, None) => None,
+        };
+        if let Some(checkpoint) = checkpoint_maybe {
+            println!(
+                "pool {}, checkpoint {}, {} updates, {} fills",
+                self.pool.pool_name, checkpoint, updates_count, fills_count
+            );
         }
+
+        if !self.is_valid_orderbook() {
+            println!(
+                "pool {}, checkpoint {:?}, {} updates, {} fills ORDERBOOK NOT VALID BEFORE UPDATING",
+                self.pool.pool_name, checkpoint_maybe, updates_count, fills_count
+            );
+        }
+
+        for update in updates {
+            self.handle_update(update);
+        }
+
+        for fill in fills {
+            self.handle_fill(fill);
+        }
+
+        if !self.is_valid_orderbook() {
+            println!(
+                "pool {}, checkpoint {:?}, {} updates, {} fills ORDERBOOK NOT VALID AFTER UPDATING",
+                self.pool.pool_name, checkpoint_maybe, updates_count, fills_count
+            );
+        }
+
+        self.remove_zero_orders();
 
         // upload new state to Redis
         self.update_orderbook();
