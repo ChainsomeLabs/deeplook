@@ -45,7 +45,7 @@ async fn main() -> Result<(), anyhow::Error> {
         database_url,
         redis_url,
         rpc_url,
-        env,
+        env: _,
     } = Args::parse();
 
     let mut db_connection =
@@ -58,7 +58,18 @@ async fn main() -> Result<(), anyhow::Error> {
     let cache = Cache::new(redis_url);
 
     // if None index all pools, if Some index only pool names in the list
-    let whitelisted_pools: Option<Vec<&'static str>> = None; // Some(vec!["SUI_USDC"]);
+    let whitelisted_pools: Option<Vec<&'static str>> = Some(vec![
+        "NS_USDC",
+        "BWETH_USDC",
+        "DRF_SUI",
+        "SUI_AUSD",
+        "SEND_USDC",
+        "XBTC_USDC",
+        "NS_SUI",
+        "AUSD_USDC",
+        "WUSDC_USDC",
+        "TYPUS_SUI",
+    ]);
 
     let pools = match whitelisted_pools {
         Some(white_list) => pools::table
