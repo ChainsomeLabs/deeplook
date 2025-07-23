@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     str::FromStr,
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
@@ -6,6 +7,7 @@ use std::{
 
 use deeplook_cache::Cache;
 use deeplook_schema::models::{OrderFill, OrderUpdate, OrderUpdateStatus, Pool};
+use diesel::{Connection, PgConnection};
 use serde::Serialize;
 use sui_sdk::{
     SuiClient,
@@ -18,8 +20,11 @@ use sui_types::{
     transaction::{Argument, CallArg, Command, ObjectArg, ProgrammableMoveCall, TransactionKind},
     type_input::TypeInput,
 };
+use url::Url;
 
-use crate::{error::DeepLookOrderbookError, extract_timestamp};
+use crate::{
+    error::DeepLookOrderbookError, extract_timestamp, historic_orderbook::get_latest_snapshot,
+};
 
 pub const DEEPBOOK_PACKAGE_ID: &str =
     "0x2c8d603bc51326b8c13cef9dd07031a408a48dddb541963357661df5d3204809";
@@ -30,8 +35,8 @@ pub const LEVEL2_FUNCTION: &str = "get_level2_ticks_from_mid";
 
 #[derive(Debug, Serialize, Clone, Copy)]
 pub struct Order {
-    pub size: u64,
-    pub price: u64,
+    pub size: i64,
+    pub price: i64,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -55,7 +60,7 @@ pub struct OrderbookReadable {
 pub struct OrderbookManager {
     pub pool: Pool,
     pub orderbook: Orderbook,
-    pub initial_ts: Option<u64>,
+    pub initial_checkpoint: i64,
     pub sui_client: Arc<SuiClient>,
     cache: Mutex<Cache>,
     price_factor: u64,
@@ -63,30 +68,55 @@ pub struct OrderbookManager {
 }
 
 impl OrderbookManager {
-    pub fn new(pool: Pool, sui_client: Arc<SuiClient>, cache: Mutex<Cache>) -> Self {
+    pub fn new(
+        pool: Pool,
+        sui_client: Arc<SuiClient>,
+        cache: Mutex<Cache>,
+        database_url: Url,
+    ) -> Self {
         let base_decimals = pool.base_asset_decimals as u32;
         let quote_decimals = pool.quote_asset_decimals as u32;
         let price_factor = (10u64).pow(9 - base_decimals + quote_decimals);
         let size_factor = (10u64).pow(base_decimals);
+
+        let snapshot = get_latest_snapshot(
+            &mut PgConnection::establish(&database_url.as_str()).expect("Error connecting to DB"),
+            pool.pool_id.as_str(),
+        )
+        // TODO: handle this better
+        .expect("failed getting snapshot")
+        .expect("got None instead of snapshot");
+
+        // TODO: maybe use HashMap instead of Orders?
+        let asks_map: HashMap<i64, i64> =
+            serde_json::from_value(snapshot.asks).expect("failed parsing asks");
+        let bids_map: HashMap<i64, i64> =
+            serde_json::from_value(snapshot.bids).expect("failed parsing bids");
+
+        let asks: Vec<Order> = asks_map
+            .iter()
+            .map(|(&price, &size)| Order {
+                price: price,
+                size: size,
+            })
+            .collect();
+        let bids: Vec<Order> = bids_map
+            .iter()
+            .map(|(&price, &size)| Order {
+                price: price,
+                size: size,
+            })
+            .collect();
+
         OrderbookManager {
             pool,
-            initial_ts: None,
+            initial_checkpoint: snapshot.checkpoint,
             sui_client,
-            orderbook: Orderbook {
-                asks: vec![],
-                bids: vec![],
-            },
+            orderbook: Orderbook { asks, bids },
             cache,
             price_factor,
             size_factor,
         }
-    }
-
-    pub async fn sync(&mut self) -> Result<(), DeepLookOrderbookError> {
-        let (ob, ts) = self.get_onchain_orderbook().await?;
-        self.initial_ts = Some(ts);
-        self.orderbook = ob;
-        Ok(())
     }
 
     pub async fn get_onchain_orderbook(&self) -> Result<(Orderbook, u64), DeepLookOrderbookError> {
@@ -248,8 +278,8 @@ impl OrderbookManager {
             .zip(bid_parsed_quantities.into_iter())
             .take(ticks_from_mid as usize)
             .map(|(price, quantity)| Order {
-                price,
-                size: quantity,
+                price: price as i64,
+                size: quantity as i64,
             })
             .collect();
 
@@ -258,24 +288,18 @@ impl OrderbookManager {
             .zip(ask_parsed_quantities.into_iter())
             .take(ticks_from_mid as usize)
             .map(|(price, quantity)| Order {
-                price,
-                size: quantity,
+                price: price as i64,
+                size: quantity as i64,
             })
             .collect();
 
         Ok((Orderbook { asks, bids }, now))
     }
 
-    fn should_skip_order(&self, ts: u64) -> bool {
-        let initial_ts = match &self.initial_ts {
-            Some(ch) => ch,
-            None => {
-                return true;
-            }
-        };
-
-        if initial_ts > &ts {
+    fn should_skip_order(&self, checkpoint: i64) -> bool {
+        if self.initial_checkpoint >= checkpoint {
             // old event, skip
+            // start with initial_checkpoint + 1
             return true;
         }
 
@@ -294,6 +318,33 @@ impl OrderbookManager {
         }
     }
 
+    fn is_valid_orderbook(&self) -> bool {
+        // All sizes must be non-negative
+        let all_sizes_valid = self
+            .orderbook
+            .asks
+            .iter()
+            .chain(self.orderbook.bids.iter())
+            .all(|o| o.size >= 0);
+
+        // Get lowest ask price
+        let min_ask = self.orderbook.asks.iter().map(|o| o.price).min();
+        // Get highest bid price
+        let max_bid = self.orderbook.bids.iter().map(|o| o.price).max();
+
+        let prices_ok = match (min_ask, max_bid) {
+            (Some(ask), Some(bid)) => ask > bid,
+            _ => true, // Valid if either side is empty
+        };
+
+        all_sizes_valid && prices_ok
+    }
+
+    fn remove_zero_orders(&mut self) {
+        self.orderbook.asks.retain(|o| o.size != 0);
+        self.orderbook.bids.retain(|o| o.size != 0);
+    }
+
     fn update_orderbook(&self) {
         let key = format!("orderbook::{}", self.pool.pool_name);
         let ob = self.get_readable_orderbook();
@@ -303,9 +354,6 @@ impl OrderbookManager {
     }
 
     fn add_order(&mut self, price: i64, size: i64, is_bid: bool) {
-        let price_u64 = price as u64;
-        let size_u64 = size as u64;
-
         // Decide which side of the book we are working with
         let side = if is_bid {
             &mut self.orderbook.bids
@@ -314,20 +362,14 @@ impl OrderbookManager {
         };
 
         // Try to find an existing order at the same price level
-        if let Some(order) = side.iter_mut().find(|o| o.price == price_u64) {
-            order.size += size_u64;
+        if let Some(order) = side.iter_mut().find(|o| o.price == price) {
+            order.size += size;
         } else {
-            side.push(Order {
-                price: price_u64,
-                size: size_u64,
-            });
+            side.push(Order { price, size });
         }
     }
 
     fn subtract_order(&mut self, price: i64, size: i64, is_bid: bool) {
-        let price_u64 = price as u64;
-        let size_u64 = size.unsigned_abs();
-
         // Decide which side of the book we are working with
         let side = if is_bid {
             &mut self.orderbook.bids
@@ -336,42 +378,23 @@ impl OrderbookManager {
         };
 
         // Try to find an existing order at the same price level
-        if let Some(order) = side.iter_mut().find(|o| o.price == price_u64) {
-            let to_sub = if order.size < size_u64 {
-                println!(
-                    "Unable to subtract whole amount p: {}, q: {}, is_bid: {} for pool {}, current order: {:?}",
-                    price, size, is_bid, self.pool.pool_name, order
-                );
-                order.size
-            } else {
-                size_u64
-            };
-
-            order.size -= to_sub;
-
-            if order.size == 0 {
-                side.retain(|o| o.size > 0);
-            }
+        if let Some(order) = side.iter_mut().find(|o| o.price == price) {
+            order.size -= size;
         } else {
-            println!(
-                "Unable to find level to subtract p: {}, q: {}, is_bid: {} for pool {}",
-                price, size, is_bid, self.pool.pool_name
-            );
+            side.push(Order { price, size: -size });
         }
     }
 
     pub fn handle_fill(&mut self, order: OrderFill) {
-        if self.should_skip_order(order.onchain_timestamp as u64) {
+        if self.should_skip_order(order.checkpoint) {
             return;
         }
 
         self.subtract_order(order.price, order.base_quantity, !order.taker_is_bid);
-        // upload new state to Redis
-        self.update_orderbook();
     }
 
     pub fn handle_update(&mut self, order: OrderUpdate) {
-        if self.should_skip_order(order.onchain_timestamp as u64) {
+        if self.should_skip_order(order.checkpoint) {
             return;
         }
         match order.status {
@@ -389,6 +412,49 @@ impl OrderbookManager {
                 self.subtract_order(order.price, to_sub, order.is_bid)
             }
         }
+    }
+
+    pub fn handle_batch(&mut self, updates: Vec<OrderUpdate>, fills: Vec<OrderFill>) {
+        let updates_count = updates.len();
+        let fills_count = fills.len();
+        let checkpoint_maybe = match (updates.first(), fills.first()) {
+            (Some(update), _) => Some(update.checkpoint),
+            (_, Some(fill)) => Some(fill.checkpoint),
+            (None, None) => None,
+        };
+        let mut is_valid_before = true;
+
+        if !self.is_valid_orderbook() {
+            is_valid_before = false;
+        }
+
+        for update in updates {
+            self.handle_update(update);
+        }
+
+        for fill in fills {
+            self.handle_fill(fill);
+        }
+
+        let is_valid_after = self.is_valid_orderbook();
+
+        // orderbook stopped being valid after this update
+        if is_valid_before && !is_valid_after {
+            println!(
+                "Orderbook STOPPED BEING VALID: pool {}, checkpoint {:?}, {} updates, {} fills",
+                self.pool.pool_name, checkpoint_maybe, updates_count, fills_count
+            );
+        }
+        // orderbook became valid after this update
+        if !is_valid_before && is_valid_after {
+            println!(
+                "Orderbook BECAME VALID: pool {}, checkpoint {:?}, {} updates, {} fills",
+                self.pool.pool_name, checkpoint_maybe, updates_count, fills_count
+            );
+        }
+
+        self.remove_zero_orders();
+
         // upload new state to Redis
         self.update_orderbook();
     }
