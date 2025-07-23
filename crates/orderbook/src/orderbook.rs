@@ -346,9 +346,6 @@ impl OrderbookManager {
     }
 
     fn update_orderbook(&self) {
-        if !self.is_valid_orderbook() {
-            println!("{} is not valid", self.pool.pool_name);
-        }
         let key = format!("orderbook::{}", self.pool.pool_name);
         let ob = self.get_readable_orderbook();
         if let Ok(mut locked_cache) = self.cache.lock() {
@@ -424,18 +421,10 @@ impl OrderbookManager {
             (_, Some(fill)) => Some(fill.checkpoint),
             (None, None) => None,
         };
-        if let Some(checkpoint) = checkpoint_maybe {
-            println!(
-                "pool {}, checkpoint {}, {} updates, {} fills",
-                self.pool.pool_name, checkpoint, updates_count, fills_count
-            );
-        }
+        let mut is_valid_before = true;
 
         if !self.is_valid_orderbook() {
-            println!(
-                "pool {}, checkpoint {:?}, {} updates, {} fills ORDERBOOK NOT VALID BEFORE UPDATING",
-                self.pool.pool_name, checkpoint_maybe, updates_count, fills_count
-            );
+            is_valid_before = false;
         }
 
         for update in updates {
@@ -446,9 +435,19 @@ impl OrderbookManager {
             self.handle_fill(fill);
         }
 
-        if !self.is_valid_orderbook() {
+        let is_valid_after = self.is_valid_orderbook();
+
+        // orderbook stopped being valid after this update
+        if is_valid_before && !is_valid_after {
             println!(
-                "pool {}, checkpoint {:?}, {} updates, {} fills ORDERBOOK NOT VALID AFTER UPDATING",
+                "Orderbook STOPPED BEING VALID: pool {}, checkpoint {:?}, {} updates, {} fills",
+                self.pool.pool_name, checkpoint_maybe, updates_count, fills_count
+            );
+        }
+        // orderbook became valid after this update
+        if !is_valid_before && is_valid_after {
+            println!(
+                "Orderbook BECAME VALID: pool {}, checkpoint {:?}, {} updates, {} fills",
                 self.pool.pool_name, checkpoint_maybe, updates_count, fills_count
             );
         }

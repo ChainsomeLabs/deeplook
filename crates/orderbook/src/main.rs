@@ -1,22 +1,18 @@
-use anyhow::Context;
 use clap::Parser;
 use deeplook_cache::Cache;
-use deeplook_indexer::{DeeplookEnv, MAINNET_REMOTE_STORE_URL};
+use deeplook_indexer::DeeplookEnv;
 use deeplook_orderbook::OrderbookManagerMap;
-use deeplook_orderbook::handlers::orderbook_order_update_handler::OrderbookOrderUpdateHandler;
+use deeplook_orderbook::catch_up::catch_up;
+use deeplook_orderbook::checkpoint::CheckpointDigest;
+use deeplook_orderbook::keep_up::keep_up;
 use deeplook_orderbook::orderbook::OrderbookManager;
 use diesel::{Connection, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl};
 
-use prometheus::Registry;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use sui_indexer_alt_framework::db::DbArgs;
-use sui_indexer_alt_framework::ingestion::ClientArgs;
-use sui_indexer_alt_framework::{Indexer, IndexerArgs};
-use sui_indexer_alt_metrics::{MetricsArgs, MetricsService};
+use std::time::Instant;
 use sui_sdk::SuiClientBuilder;
-use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use deeplook_schema::models::Pool;
@@ -49,7 +45,7 @@ async fn main() -> Result<(), anyhow::Error> {
         database_url,
         redis_url,
         rpc_url,
-        env,
+        env: _,
     } = Args::parse();
 
     let mut db_connection =
@@ -62,7 +58,18 @@ async fn main() -> Result<(), anyhow::Error> {
     let cache = Cache::new(redis_url);
 
     // if None index all pools, if Some index only pool names in the list
-    let whitelisted_pools: Option<Vec<&'static str>> = None; // Some(vec!["SUI_USDC"]);
+    let whitelisted_pools: Option<Vec<&'static str>> = Some(vec![
+        "NS_USDC",
+        "BWETH_USDC",
+        "DRF_SUI",
+        "SUI_AUSD",
+        "SEND_USDC",
+        "XBTC_USDC",
+        "NS_SUI",
+        "AUSD_USDC",
+        "WUSDC_USDC",
+        "TYPUS_SUI",
+    ]);
 
     let pools = match whitelisted_pools {
         Some(white_list) => pools::table
@@ -90,54 +97,36 @@ async fn main() -> Result<(), anyhow::Error> {
         ob_manager_map.insert(id, arc);
     }
 
-    let cancel = CancellationToken::new();
-    let registry = Registry::new_custom(Some("deeplook".into()), None)
-        .context("Failed to create Prometheus registry.")?;
-    let metrics = MetricsService::new(
-        MetricsArgs { metrics_address },
-        registry,
-        cancel.child_token(),
-    );
+    let orderbook_managers = Arc::new(ob_manager_map);
 
-    let mut indexer = Indexer::new(
-        database_url,
-        DbArgs::default(),
-        IndexerArgs {
-            // TODO: lowest checkpoint of all the ob_managers
-            first_checkpoint: Some(157000000),
-            last_checkpoint: None,
-            pipeline: vec![],
-            skip_watermark: true,
-        },
-        ClientArgs {
-            remote_store_url: Some(Url::parse(MAINNET_REMOTE_STORE_URL).unwrap()),
-            local_ingestion_path: None,
-            rpc_api_url: None,
-            rpc_username: None,
-            rpc_password: None,
-        },
-        Default::default(),
-        None,
-        metrics.registry(),
-        cancel.clone(),
+    let latest_checkpoint = CheckpointDigest::get_sequence_number(Arc::new(sui_client))
+        .await
+        .expect("failed getting latest checkpoint");
+
+    let start = Instant::now();
+    let catch_up_result = catch_up(
+        database_url.clone(),
+        metrics_address,
+        orderbook_managers.clone(),
+        latest_checkpoint,
     )
-    .await?;
+    .await;
 
-    let arc_manager_map = Arc::new(ob_manager_map);
+    let duration = start.elapsed();
 
-    indexer
-        .concurrent_pipeline(
-            OrderbookOrderUpdateHandler::new(env, arc_manager_map),
-            Default::default(),
-        )
-        .await?;
+    match catch_up_result {
+        Ok(_) => println!("Orderbooks caught up in {}", duration.as_secs()),
+        Err(e) => {
+            println!("catching up failed: {:#?}", e);
+            return Err(e);
+        }
+    }
 
-    let h_indexer = indexer.run().await?;
-    let h_metrics = metrics.run().await?;
-
-    let _ = h_indexer.await;
-    cancel.cancel();
-    let _ = h_metrics.await;
-
-    Ok(())
+    keep_up(
+        database_url,
+        metrics_address,
+        orderbook_managers,
+        latest_checkpoint + 1,
+    )
+    .await
 }
