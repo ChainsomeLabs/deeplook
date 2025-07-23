@@ -53,15 +53,25 @@ Returns OHLCV candlestick data for the specified time range.
 Returns the current orderbook snapshot and the timestamp of the last update.  
 [Example](https://api.sui.carmine.finance/orderbook/SUI_USDC)
 
-### `/ws_orderbook/<pool_name>`
-
-Returns live orderbook via websocket that updates everytime a relevant event happens.  
-[Example](wss://api.sui.carmine.finance/ws_orderbook/SUI_USDC)
-
 ### `/order_fills/<pool_name>?start_time=<unix_sec>&end_time=<unix_sec>`
 
 Returns all trade-level order fills within the specified time window.  
 [Example](https://api.sui.carmine.finance/order_fills/SUI_USDC?start_time=1750866244&end_time=1750886244)
+
+---
+## WebSocket endpoints
+### `/ws_orderbook/<pool_name>`
+
+Returns whole orderbook snapshot via websocket that updates everytime a relevant event happens.  
+- Example: wss://api.sui.carmine.finance/ws_orderbook/SEND_USDC
+
+### `/ws_orderbook_bests/:pool_names`
+Returns current best levels via websocket on every orderbook update (even if the update doesn't happen on best levels).
+- Example: wss://api.sui.carmine.finance/ws_orderbook_bests/SEND_USDC
+
+### `/ws_orderbook_spread/:pool_name`
+Returns current spread via websocket on every orderbook update (even if the update doesn't happen on best levels).
+- Example: wss://api.sui.carmine.finance/ws_orderbook_spread/SEND_USDC
 
 ---
 
@@ -88,14 +98,6 @@ Returns the Volume-Weighted Average Price (VWAP) over the selected time window.
 
 Returns the normalized order book imbalance (0–100 scale) at a given depth and level.  
 [Example](https://api.sui.carmine.finance/orderbook_imbalance/SUI_USDC?depth=100&level=2)
-
----
-
-## Live Orderbook
-
-Onchain orderbook is fetched for each pool and then being updated with events that are live streamed.
-The live orderbooks are stored in Redis for quick access and are served via websocket with live updates.
-The websocket address is `wss://api.sui.carmine.finance/ws_orderbook/:pool_name`.
 
 ---
 
