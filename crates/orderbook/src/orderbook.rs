@@ -20,6 +20,7 @@ use sui_types::{
     transaction::{Argument, CallArg, Command, ObjectArg, ProgrammableMoveCall, TransactionKind},
     type_input::TypeInput,
 };
+use tracing::{error, info};
 use url::Url;
 
 use crate::{
@@ -349,7 +350,10 @@ impl OrderbookManager {
         let key = format!("orderbook::{}", self.pool.pool_name);
         let ob = self.get_readable_orderbook();
         if let Ok(mut locked_cache) = self.cache.lock() {
-            let _ = locked_cache.set(&key, &ob);
+            match locked_cache.set(&key, &ob) {
+                Ok(()) => info!("redis value set {}", key),
+                Err(e) => error!("redis failed setting value {} {:?}", key, e),
+            }
         }
     }
 
@@ -440,14 +444,14 @@ impl OrderbookManager {
 
         // orderbook stopped being valid after this update
         if is_valid_before && !is_valid_after {
-            println!(
+            info!(
                 "Orderbook STOPPED BEING VALID: pool {}, checkpoint {:?}, {} updates, {} fills",
                 self.pool.pool_name, checkpoint_maybe, updates_count, fills_count
             );
         }
         // orderbook became valid after this update
         if !is_valid_before && is_valid_after {
-            println!(
+            info!(
                 "Orderbook BECAME VALID: pool {}, checkpoint {:?}, {} updates, {} fills",
                 self.pool.pool_name, checkpoint_maybe, updates_count, fills_count
             );

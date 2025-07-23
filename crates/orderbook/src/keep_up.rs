@@ -10,6 +10,7 @@ use sui_indexer_alt_framework::{
 };
 use sui_indexer_alt_metrics::{MetricsArgs, MetricsService};
 use tokio_util::sync::CancellationToken;
+use tracing::info;
 use url::Url;
 
 use crate::{
@@ -67,6 +68,8 @@ pub async fn keep_up(
             Default::default(),
         )
         .await?;
+
+    info!("keeping up from {}", start);
 
     let h_indexer = indexer.run().await?;
     let h_metrics = metrics.run().await?;

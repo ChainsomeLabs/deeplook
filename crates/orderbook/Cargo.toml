@@ -26,6 +26,7 @@ sui-sdk-types.workspace = true
 sui-types.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+tracing.workspace = true
 url.workspace = true
 
 deeplook-indexer = { path = "../indexer" }

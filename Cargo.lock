@@ -2053,6 +2053,7 @@ dependencies = [
  "sui-types",
  "tokio",
  "tokio-util 0.7.15",
+ "tracing",
  "url",
 ]
 
@@ -2108,6 +2109,8 @@ dependencies = [
  "redis",
  "serde",
  "serde_json",
+ "tracing",
+ "tracing-subscriber",
  "url",
 ]
 
