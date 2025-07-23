@@ -1992,16 +1992,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deeplook-cache"
-version = "0.1.0"
-dependencies = [
- "redis",
- "serde",
- "serde_json",
- "url",
-]
-
-[[package]]
 name = "deeplook-indexer"
 version = "0.1.0"
 dependencies = [
@@ -2045,10 +2035,10 @@ dependencies = [
  "bcs",
  "chrono",
  "clap",
- "deeplook-cache",
  "deeplook-indexer",
  "deeplook-schema",
  "deeplook-server",
+ "deeplook-utils",
  "diesel",
  "move-core-types 0.0.4 (git+https://github.com/MystenLabs/sui.git?rev=822bae4)",
  "prometheus",
@@ -2091,8 +2081,8 @@ dependencies = [
  "bigdecimal",
  "chrono",
  "clap",
- "deeplook-cache",
  "deeplook-schema",
+ "deeplook-utils",
  "diesel",
  "diesel-async",
  "futures",
@@ -2108,6 +2098,16 @@ dependencies = [
  "tokio",
  "tokio-util 0.7.15",
  "tower-http",
+ "url",
+]
+
+[[package]]
+name = "deeplook-utils"
+version = "0.1.0"
+dependencies = [
+ "redis",
+ "serde",
+ "serde_json",
  "url",
 ]
 

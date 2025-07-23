@@ -1,11 +1,11 @@
 use clap::Parser;
-use deeplook_cache::Cache;
 use deeplook_indexer::DeeplookEnv;
 use deeplook_orderbook::OrderbookManagerMap;
 use deeplook_orderbook::catch_up::catch_up;
 use deeplook_orderbook::checkpoint::CheckpointDigest;
 use deeplook_orderbook::keep_up::keep_up;
 use deeplook_orderbook::orderbook::OrderbookManager;
+use deeplook_utils::cache::Cache;
 use diesel::{Connection, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl};
 
 use std::collections::HashMap;

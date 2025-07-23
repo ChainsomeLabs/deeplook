@@ -5,8 +5,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use deeplook_cache::Cache;
 use deeplook_schema::models::{OrderFill, OrderUpdate, OrderUpdateStatus, Pool};
+use deeplook_utils::cache::Cache;
 use diesel::{Connection, PgConnection};
 use serde::Serialize;
 use sui_sdk::{

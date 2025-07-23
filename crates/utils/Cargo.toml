@@ -1,5 +1,5 @@
 [package]
-name = "deeplook-cache"
+name = "deeplook-utils"
 version = "0.1.0"
 authors = ["ChainsomeLabs"]
 license = "Apache-2.0"
