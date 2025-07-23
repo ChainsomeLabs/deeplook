@@ -61,18 +61,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let cache = Cache::new(redis_url);
 
     // if None index all pools, if Some index only pool names in the list
-    let whitelisted_pools: Option<Vec<&'static str>> = Some(vec![
-        "NS_USDC",
-        "BWETH_USDC",
-        "DRF_SUI",
-        "SUI_AUSD",
-        "SEND_USDC",
-        "XBTC_USDC",
-        "NS_SUI",
-        "AUSD_USDC",
-        "WUSDC_USDC",
-        "TYPUS_SUI",
-    ]);
+    let whitelisted_pools: Option<Vec<&'static str>> = None;
 
     let pools = match whitelisted_pools {
         Some(white_list) => pools::table
