@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use chrono::NaiveDateTime;
 use clap::Parser;
 use diesel::{Connection, PgConnection, Queryable};
-use tracing::warn;
+use tracing::{info, warn};
 use url::Url;
 
 use deeplook_schema::{models::OrderbookSnapshot, schema};
@@ -24,6 +24,7 @@ struct Args {
 struct OrderUpdateSummary {
     pub price: i64,
     pub quantity: i64,
+    pub original_quantity: i64,
     pub status: String,
     pub timestamp: NaiveDateTime,
     pub checkpoint: i64,
@@ -91,6 +92,7 @@ fn get_txs(
         .select((
             schema::order_updates::price,
             schema::order_updates::quantity,
+            schema::order_updates::original_quantity,
             schema::order_updates::status,
             schema::order_updates::timestamp,
             schema::order_updates::checkpoint,
@@ -101,7 +103,11 @@ fn get_txs(
         .into_iter()
         .map(|u| OrderStep {
             price: u.price,
-            quantity: u.quantity,
+            quantity: if u.status == "Modified" {
+                u.original_quantity - u.quantity
+            } else {
+                u.quantity
+            },
             op: status_to_operation(u.status.as_str()),
             checkpoint: u.checkpoint,
             is_bid: u.is_bid,
@@ -139,7 +145,7 @@ fn get_txs(
         None => return Err(HistoricOrderbookError::NoTimestampInRange),
     };
 
-    println!(
+    info!(
         "Checkpoints {} - {} inclusive",
         start_checkpoint + 1,
         end_checkpoint

@@ -1,7 +1,9 @@
 use clap::Parser;
 use deeplook_orderbook::historic_orderbook::get_historic_orderbook;
 use deeplook_schema::schema::orderbook_snapshots;
+use deeplook_utils::logging::setup_logging;
 use diesel::{Connection, PgConnection, RunQueryDsl};
+use tracing::{error, info};
 use url::Url;
 
 #[derive(Parser)]
@@ -23,7 +25,7 @@ fn store_snapshot(pool_id: &str, end_checkpoint: i64, database_url: Url) {
     let new_snapshot = match new_snapshot_result {
         Ok(v) => v,
         Err(e) => {
-            println!("{:?}", e);
+            error!("{:?}", e);
             return;
         }
     };
@@ -33,7 +35,7 @@ fn store_snapshot(pool_id: &str, end_checkpoint: i64, database_url: Url) {
         .values(&new_snapshot)
         .execute(&mut conn)
         .expect("Failed storing snapshot");
-    println!(
+    info!(
         "stored snapshot {}, {}",
         new_snapshot.checkpoint, new_snapshot.pool_id
     );
@@ -48,6 +50,7 @@ async fn main() -> Result<(), anyhow::Error> {
         database_url,
         end_checkpoint,
     } = Args::parse();
+    setup_logging();
 
     let pool_ids = vec![
         "0xb663828d6217467c8a1838a03793da896cbe745b150ebd57d82f814ca579fc22",
