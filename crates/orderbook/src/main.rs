@@ -1,12 +1,14 @@
 use clap::Parser;
-use deeplook_cache::Cache;
 use deeplook_indexer::DeeplookEnv;
 use deeplook_orderbook::OrderbookManagerMap;
 use deeplook_orderbook::catch_up::catch_up;
 use deeplook_orderbook::checkpoint::CheckpointDigest;
 use deeplook_orderbook::keep_up::keep_up;
 use deeplook_orderbook::orderbook::OrderbookManager;
+use deeplook_utils::cache::Cache;
+use deeplook_utils::logging::setup_logging;
 use diesel::{Connection, ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl};
+use tracing::{error, info};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -47,6 +49,7 @@ async fn main() -> Result<(), anyhow::Error> {
         rpc_url,
         env: _,
     } = Args::parse();
+    setup_logging();
 
     let mut db_connection =
         PgConnection::establish(&database_url.as_str()).expect("Error connecting to DB");
@@ -115,9 +118,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let duration = start.elapsed();
 
     match catch_up_result {
-        Ok(_) => println!("Orderbooks caught up in {}", duration.as_secs()),
+        Ok(_) => info!("Orderbooks caught up in {}s", duration.as_secs()),
         Err(e) => {
-            println!("catching up failed: {:#?}", e);
+            error!("catching up failed: {:#?}", e);
             return Err(e);
         }
     }

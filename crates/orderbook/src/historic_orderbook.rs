@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use chrono::NaiveDateTime;
 use clap::Parser;
 use diesel::{Connection, PgConnection, Queryable};
+use tracing::warn;
 use url::Url;
 
 use deeplook_schema::{models::OrderbookSnapshot, schema};
@@ -49,6 +50,7 @@ struct OrderStep {
     pub price: i64,
     pub quantity: i64,
     pub op: Op,
+    #[allow(dead_code)]
     pub checkpoint: i64,
     pub is_bid: bool,
     pub timestamp: NaiveDateTime,
@@ -236,7 +238,7 @@ pub fn get_historic_orderbook(
     asks.retain(|_, &mut qty| qty != 0);
 
     for (price, qty) in bids.iter().filter(|(_, q)| q < &&0) {
-        println!(
+        warn!(
             "Negative bid at price {}: {}, pool id {}",
             price, qty, pool_id
         );
@@ -244,7 +246,7 @@ pub fn get_historic_orderbook(
     }
 
     for (price, qty) in asks.iter().filter(|(_, q)| q < &&0) {
-        println!(
+        warn!(
             "Negative ask at price {}: {}, pool id {}",
             price, qty, pool_id
         );
@@ -252,7 +254,7 @@ pub fn get_historic_orderbook(
     }
 
     if has_overlap(&asks, &bids) {
-        println!("Orderbook {} has overlap", pool_id);
+        warn!("Orderbook {} has overlap", pool_id);
         return Err(HistoricOrderbookError::Overlap);
     }
 

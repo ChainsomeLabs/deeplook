@@ -1,8 +1,8 @@
 use crate::error::DeepBookError;
 use crate::metrics::RpcMetrics;
-use deeplook_cache::AsyncCache;
 use deeplook_schema::models::{OrderFillSummary, Pool};
 use deeplook_schema::schema;
+use deeplook_utils::cache::AsyncCache;
 use diesel::deserialize::FromSqlRow;
 use diesel::dsl::sql;
 use diesel::expression::QueryMetadata;

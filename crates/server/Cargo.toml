@@ -37,7 +37,7 @@ sui-pg-db = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
 tower-http = { version = "0.5", features = ["cors"] }
 sui-sdk.workspace = true
 
-deeplook-cache = { path = "../cache" }
+deeplook-utils = { path = "../utils" }
 
 [[bin]]
 name = "deeplook-server"

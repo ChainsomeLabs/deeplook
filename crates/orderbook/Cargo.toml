@@ -26,12 +26,13 @@ sui-sdk-types.workspace = true
 sui-types.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+tracing.workspace = true
 url.workspace = true
 
 deeplook-indexer = { path = "../indexer" }
 deeplook-schema = { path = "../schema" }
 deeplook-server = { path = "../server" }
-deeplook-cache = { path = "../cache" }
+deeplook-utils = { path = "../utils" }
 
 [[bin]]
 name = "deeplook-orderbook"
