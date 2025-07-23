@@ -93,7 +93,7 @@ Returns the normalized order book imbalance (0–100 scale) at a given depth and
 
 ## Live Orderbook
 
-Onchian orderbook is fetched for each pool and then being updated with events that are live streamed.
+Onchain orderbook is fetched for each pool and then being updated with events that are live streamed.
 The live orderbooks are stored in Redis for quick access and are served via websocket with live updates.
 The websocket address is `wss://api.sui.carmine.finance/ws_orderbook/:pool_name`.
 
@@ -136,7 +136,7 @@ REDIS_URL=redis://localhost:6379
 
 **Do not use these values in production**
 
-Create Postgresql database locally using docker container.
+Create Postgresql database locally using Docker container.
 
 ```sh
 make postgres
@@ -162,7 +162,7 @@ Run database migrations
 make migrateup
 ```
 
-Create Redis locally using docker container. Redis is used to hold live orderbook.
+Create Redis locally using Docker container. Redis is used to hold live orderbook.
 
 ```sh
 make redis
