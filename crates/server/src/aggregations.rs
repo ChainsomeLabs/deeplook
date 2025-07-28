@@ -1,5 +1,5 @@
-use chrono::DateTime;
-use serde_json::Value;
+use chrono::{DateTime, Duration, NaiveDateTime, Utc};
+use serde_json::{json, Value};
 use std::{collections::HashMap, i64, sync::Arc};
 use url::Url;
 
@@ -23,7 +23,11 @@ use axum::{
 
 use crate::error::DeepBookError;
 use crate::server::{AppState, ParameterUtil};
-use deeplook_schema::{models::OHLCV1min, schema, view};
+use deeplook_schema::{
+    models::OHLCV1min,
+    schema::{self, order_fills},
+    view,
+};
 
 // const ALLOWED_OHLCV_INTERVALS: &[&str] = &["1min", "15min", "1h"];
 
@@ -514,4 +518,53 @@ fn sum_quantities(orderbook_side: &[Value]) -> f64 {
             }
         })
         .sum()
+}
+
+pub async fn get_fills_last_30_days(
+    Path(pool_name): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<HashMap<String, Value>>>, DeepBookError> {
+    let pool_id = match state.reader.get_pool_id_by_name(&pool_name).await {
+        Err(_) => {
+            return Err(DeepBookError::InternalError(
+                "No valid pool names provided".to_string(),
+            ));
+        }
+        Ok(v) => v,
+    };
+
+    // Calculate time threshold
+    let threshold: NaiveDateTime = Utc::now().naive_utc() - Duration::days(30);
+
+    let query = order_fills::table
+        .filter(order_fills::pool_id.eq(pool_id.clone()))
+        .filter(order_fills::timestamp.ge(threshold))
+        .select((
+            order_fills::timestamp,
+            order_fills::price,
+            order_fills::base_quantity,
+            order_fills::quote_quantity,
+        ));
+
+    // Execute query using state.reader
+    let result: Vec<(NaiveDateTime, i64, i64, i64)> = state
+        .reader
+        .results(query)
+        .await
+        .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
+
+    // Format as JSON
+    let rows: Vec<HashMap<String, Value>> = result
+        .into_iter()
+        .map(|(ts, price, base, quote)| {
+            HashMap::from([
+                ("timestamp".to_string(), json!(ts.to_string())),
+                ("price".to_string(), json!(price)),
+                ("base_quantity".to_string(), json!(base)),
+                ("quote_quantity".to_string(), json!(quote)),
+            ])
+        })
+        .collect();
+
+    Ok(Json(rows))
 }

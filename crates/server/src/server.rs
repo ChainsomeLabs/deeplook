@@ -48,7 +48,8 @@ use tokio::join;
 use tokio_util::sync::CancellationToken;
 
 use crate::aggregations::{
-    avg_duration_between_trades, avg_trade_size, get_ohlcv, get_vwap, orderbook_imbalance,
+    avg_duration_between_trades, avg_trade_size, get_fills_last_30_days, get_ohlcv, get_vwap,
+    orderbook_imbalance,
 };
 
 pub const SUI_MAINNET_URL: &str = "https://fullnode.mainnet.sui.io:443";
@@ -89,6 +90,7 @@ pub const AVG_TRADE_PATH: &str = "/get_avg_trade_size/:pool_name";
 pub const AVG_DURATION_BETWEEN_TRADES_PATH: &str = "/get_avg_duration_between_trades/:pool_name";
 pub const VWAP: &str = "/get_vwap/:pool_name";
 pub const OBI: &str = "/orderbook_imbalance/:pool_name";
+pub const RECENT_TRADES: &str = "/recent_trades/:pool_name";
 
 #[derive(Clone)]
 pub struct AppState {
@@ -194,6 +196,7 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
             get(avg_duration_between_trades),
         )
         .route(VWAP, get(get_vwap))
+        .route(RECENT_TRADES, get(get_fills_last_30_days))
         .with_state(state.clone());
 
     db_routes
