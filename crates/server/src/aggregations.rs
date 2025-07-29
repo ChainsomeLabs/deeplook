@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, NaiveDateTime, Utc};
+use chrono::DateTime;
 use serde_json::{json, Value};
 use std::{collections::HashMap, i64, sync::Arc};
 use url::Url;
@@ -24,9 +24,8 @@ use axum::{
 use crate::error::DeepBookError;
 use crate::server::{AppState, ParameterUtil};
 use deeplook_schema::{
-    models::OHLCV1min,
-    schema::{self, order_fills},
-    view,
+    models::{OHLCV1min, OrderFill24hSummary},
+    schema, view,
 };
 
 // const ALLOWED_OHLCV_INTERVALS: &[&str] = &["1min", "15min", "1h"];
@@ -520,48 +519,29 @@ fn sum_quantities(orderbook_side: &[Value]) -> f64 {
         .sum()
 }
 
-pub async fn get_fills_last_30_days(
-    Path(pool_name): Path<String>,
+pub async fn get_order_fill_24h_summary(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<HashMap<String, Value>>>, DeepBookError> {
-    let pool_id = match state.reader.get_pool_id_by_name(&pool_name).await {
-        Err(_) => {
-            return Err(DeepBookError::InternalError(
-                "No valid pool names provided".to_string(),
-            ));
-        }
-        Ok(v) => v,
-    };
-
-    // Calculate time threshold
-    let threshold: NaiveDateTime = Utc::now().naive_utc() - Duration::days(30);
-
-    let query = order_fills::table
-        .filter(order_fills::pool_id.eq(pool_id.clone()))
-        .filter(order_fills::timestamp.ge(threshold))
-        .select((
-            order_fills::timestamp,
-            order_fills::price,
-            order_fills::base_quantity,
-            order_fills::quote_quantity,
-        ));
-
-    // Execute query using state.reader
-    let result: Vec<(NaiveDateTime, i64, i64, i64)> = state
+    // Load results from the view
+    let result: Vec<OrderFill24hSummary> = state
         .reader
-        .results(query)
+        .results(view::order_fill_24h_summary_view::dsl::order_fill_24h_summary_view)
         .await
         .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
 
-    // Format as JSON
+    // Format into JSON-compatible HashMaps
     let rows: Vec<HashMap<String, Value>> = result
         .into_iter()
-        .map(|(ts, price, base, quote)| {
+        .map(|row| {
             HashMap::from([
-                ("timestamp".to_string(), json!(ts.to_string())),
-                ("price".to_string(), json!(price)),
-                ("base_quantity".to_string(), json!(base)),
-                ("quote_quantity".to_string(), json!(quote)),
+                ("pool_id".to_string(), json!(row.pool_id)),
+                ("base_volume_24h".to_string(), json!(row.base_volume_24h)),
+                (
+                    "trade_count_24h".to_string(),
+                    json!(row.trade_count_24h.unwrap_or(0.into())),
+                ),
+                ("price_open_24h".to_string(), json!(row.price_open_24h)),
+                ("price_close_24h".to_string(), json!(row.price_close_24h)),
             ])
         })
         .collect();
