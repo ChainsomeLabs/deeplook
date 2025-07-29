@@ -1,0 +1,1 @@
+DROP VIEW IF EXISTS order_fill_24h_summary_view;
