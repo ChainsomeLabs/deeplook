@@ -16,8 +16,10 @@ use sui_types::{
 
 use crate::server::{parse_type_input, DEEPBOOK_PACKAGE_ID, LEVEL2_FUNCTION, LEVEL2_MODULE};
 
+use diesel::prelude::*;
+use diesel::query_dsl::JoinOnDsl;
 use diesel::{
-    dsl::sum,
+    dsl::{sql, sum},
     sql_query,
     sql_types::{Numeric, Text},
     ExpressionMethods, QueryDsl, SelectableHelper,
@@ -642,4 +644,56 @@ pub async fn get_volume_multi_window(
     map.insert("30d".to_string(), summary.volume_30d);
 
     Ok(Json(map))
+}
+
+pub async fn get_avg_trade_size_multi_window(
+    Path(pool_name): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, DeepBookError> {
+    let pool_id = state
+        .reader
+        .get_pool_id_by_name(&pool_name)
+        .await
+        .map_err(|_| DeepBookError::InternalError("Invalid pool name".into()))?;
+
+    let now = Utc::now().naive_utc();
+
+    let durations = vec![
+        ("5min", Duration::minutes(5)),
+        ("15min", Duration::minutes(15)),
+        ("1h", Duration::hours(1)),
+        ("24h", Duration::hours(24)),
+    ];
+
+    let mut result_map = serde_json::Map::new();
+
+    for (label, duration) in durations {
+        let start_time = now - duration;
+
+        let query = view::ohlcv_1min::table
+            .inner_join(
+                view::trade_count_1min::table.on(view::ohlcv_1min::bucket
+                    .eq(view::trade_count_1min::bucket)
+                    .and(view::ohlcv_1min::pool_id.eq(view::trade_count_1min::pool_id))),
+            )
+            .filter(view::ohlcv_1min::pool_id.eq(pool_id.clone()))
+            .filter(view::ohlcv_1min::bucket.ge(start_time))
+            .select(sql::<Numeric>(
+                "COALESCE(AVG(volume_base / NULLIF(trade_count, 0)), 0)",
+            ));
+
+        let rows: Vec<BigDecimal> = state
+            .reader
+            .results(query)
+            .await
+            .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
+
+        let avg = rows
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| BigDecimal::from(0));
+        result_map.insert(label.to_string(), json!(avg));
+    }
+
+    Ok(Json(serde_json::Value::Object(result_map)))
 }

@@ -23,3 +23,13 @@ diesel::table! {
         price_close_24h -> BigInt,
     }
 }
+
+diesel::table! {
+    trade_count_1min (bucket, pool_id) {
+        bucket -> Timestamp,
+        pool_id -> Text,
+        trade_count -> BigInt,
+    }
+}
+
+diesel::allow_tables_to_appear_in_same_query!(ohlcv_1min, trade_count_1min,);

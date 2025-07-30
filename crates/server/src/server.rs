@@ -48,8 +48,9 @@ use tokio::join;
 use tokio_util::sync::CancellationToken;
 
 use crate::aggregations::{
-    avg_duration_between_trades, avg_trade_size, get_ohlcv, get_order_fill_24h_summary,
-    get_volume_last_n_days, get_volume_multi_window, get_vwap, orderbook_imbalance,
+    avg_duration_between_trades, avg_trade_size, get_avg_trade_size_multi_window, get_ohlcv,
+    get_order_fill_24h_summary, get_volume_last_n_days, get_volume_multi_window, get_vwap,
+    orderbook_imbalance,
 };
 
 pub const SUI_MAINNET_URL: &str = "https://fullnode.mainnet.sui.io:443";
@@ -93,6 +94,7 @@ pub const OBI: &str = "/orderbook_imbalance/:pool_name";
 pub const FILLS_24H_SUMMARY: &str = "/fills_24h_summary";
 pub const VOLUME: &str = "/volume/:pool_name";
 pub const VOLUME_MULTI_WINDOW: &str = "/volume_multi_window/:pool_name";
+pub const AVERAGE_TRADE_SIZE_MULTI_WINDOW: &str = "/average_trade_multi_window/:pool_name";
 
 #[derive(Clone)]
 pub struct AppState {
@@ -201,6 +203,10 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
         .route(FILLS_24H_SUMMARY, get(get_order_fill_24h_summary))
         .route(VOLUME, get(get_volume_last_n_days))
         .route(VOLUME_MULTI_WINDOW, get(get_volume_multi_window))
+        .route(
+            AVERAGE_TRADE_SIZE_MULTI_WINDOW,
+            get(get_avg_trade_size_multi_window),
+        )
         .with_state(state.clone());
 
     db_routes
