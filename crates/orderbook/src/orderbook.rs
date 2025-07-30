@@ -67,6 +67,7 @@ struct Trade {
     pub price: i64,
     pub base_quantity: i64,
     pub quote_quantity: i64,
+    pub taker_is_bid: bool,
 }
 
 impl From<&OrderFill> for Trade {
@@ -78,6 +79,7 @@ impl From<&OrderFill> for Trade {
             price: fill.price,
             base_quantity: fill.base_quantity,
             quote_quantity: fill.quote_quantity,
+            taker_is_bid: fill.taker_is_bid,
         }
     }
 }
