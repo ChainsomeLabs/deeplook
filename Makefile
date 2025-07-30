@@ -13,7 +13,7 @@ postgres:
 	docker run --name $(DB_CONTAINER_NAME) -p 5432:5432 -e POSTGRES_USER=$(USER_NAME) -e POSTGRES_PASSWORD=$(PASSWORD) -d $(DB_IMAGE) 
 
 redis:
-	docker run --name $(REDIS_CONTAINER_NAME) -p 6379:6379 -d $(REDIS_IMAGE) redis-server --notify-keyspace-events 'K$$'
+	docker run --name $(REDIS_CONTAINER_NAME) -p 6379:6379 -d $(REDIS_IMAGE) redis-server --notify-keyspace-events '$$lK'
 
 createdb:
 	docker exec -it $(DB_CONTAINER_NAME) createdb --user=$(USER_NAME) --owner=$(USER_NAME) $(DB_NAME)
