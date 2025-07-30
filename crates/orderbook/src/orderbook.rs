@@ -5,6 +5,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use chrono::NaiveDateTime;
 use deeplook_schema::models::{OrderFill, OrderUpdate, OrderUpdateStatus, Pool};
 use deeplook_utils::cache::Cache;
 use diesel::{Connection, PgConnection};
@@ -58,6 +59,29 @@ pub struct OrderbookReadable {
     pub bids: Vec<OrderReadable>,
 }
 
+#[derive(Serialize)]
+struct Trade {
+    pub digest: String,
+    pub checkpoint: i64,
+    pub timestamp: NaiveDateTime,
+    pub price: i64,
+    pub base_quantity: i64,
+    pub quote_quantity: i64,
+}
+
+impl From<&OrderFill> for Trade {
+    fn from(fill: &OrderFill) -> Self {
+        Trade {
+            digest: fill.digest.clone(),
+            checkpoint: fill.checkpoint,
+            timestamp: fill.timestamp,
+            price: fill.price,
+            base_quantity: fill.base_quantity,
+            quote_quantity: fill.quote_quantity,
+        }
+    }
+}
+
 pub struct OrderbookManager {
     pub pool: Pool,
     pub orderbook: Orderbook,
@@ -80,38 +104,42 @@ impl OrderbookManager {
         let price_factor = (10u64).pow(9 - base_decimals + quote_decimals);
         let size_factor = (10u64).pow(base_decimals);
 
-        let snapshot = get_latest_snapshot(
+        let snapshot_option = get_latest_snapshot(
             &mut PgConnection::establish(&database_url.as_str()).expect("Error connecting to DB"),
             pool.pool_id.as_str(),
         )
         // TODO: handle this better
-        .expect("failed getting snapshot")
-        .expect("got None instead of snapshot");
+        .expect("failed getting snapshot");
 
-        // TODO: maybe use HashMap instead of Orders?
-        let asks_map: HashMap<i64, i64> =
-            serde_json::from_value(snapshot.asks).expect("failed parsing asks");
-        let bids_map: HashMap<i64, i64> =
-            serde_json::from_value(snapshot.bids).expect("failed parsing bids");
+        let (asks, bids, initial_checkpoint) = match snapshot_option {
+            Some(snapshot) => {
+                let asks_map: HashMap<i64, i64> =
+                    serde_json::from_value(snapshot.asks).expect("failed parsing asks");
+                let bids_map: HashMap<i64, i64> =
+                    serde_json::from_value(snapshot.bids).expect("failed parsing bids");
 
-        let asks: Vec<Order> = asks_map
-            .iter()
-            .map(|(&price, &size)| Order {
-                price: price,
-                size: size,
-            })
-            .collect();
-        let bids: Vec<Order> = bids_map
-            .iter()
-            .map(|(&price, &size)| Order {
-                price: price,
-                size: size,
-            })
-            .collect();
+                let asks: Vec<Order> = asks_map
+                    .iter()
+                    .map(|(&price, &size)| Order {
+                        price: price,
+                        size: size,
+                    })
+                    .collect();
+                let bids: Vec<Order> = bids_map
+                    .iter()
+                    .map(|(&price, &size)| Order {
+                        price: price,
+                        size: size,
+                    })
+                    .collect();
+                (asks, bids, snapshot.checkpoint)
+            }
+            None => (vec![], vec![], 0),
+        };
 
         OrderbookManager {
             pool,
-            initial_checkpoint: snapshot.checkpoint,
+            initial_checkpoint,
             sui_client,
             orderbook: Orderbook { asks, bids },
             cache,
@@ -418,6 +446,16 @@ impl OrderbookManager {
         }
     }
 
+    fn store_latest_trade(&mut self, trade: Trade) {
+        let key = format!("latest_trades::{}", self.pool.pool_name);
+        if let Ok(mut locked_cache) = self.cache.lock() {
+            match locked_cache.push(&key, &trade) {
+                Ok(()) => info!("redis value pushed {}", key),
+                Err(e) => error!("redis failed pushing value {} {:?}", key, e),
+            }
+        }
+    }
+
     pub fn handle_batch(&mut self, updates: Vec<OrderUpdate>, fills: Vec<OrderFill>) {
         let updates_count = updates.len();
         let fills_count = fills.len();
@@ -437,6 +475,7 @@ impl OrderbookManager {
         }
 
         for fill in fills {
+            self.store_latest_trade(Trade::from(&fill));
             self.handle_fill(fill);
         }
 
