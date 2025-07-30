@@ -48,8 +48,8 @@ use tokio::join;
 use tokio_util::sync::CancellationToken;
 
 use crate::aggregations::{
-    avg_duration_between_trades, avg_trade_size, get_ohlcv, get_order_fill_24h_summary, get_vwap,
-    orderbook_imbalance,
+    avg_duration_between_trades, avg_trade_size, get_ohlcv, get_order_fill_24h_summary,
+    get_volume_last_n_days, get_vwap, orderbook_imbalance,
 };
 
 pub const SUI_MAINNET_URL: &str = "https://fullnode.mainnet.sui.io:443";
@@ -91,6 +91,7 @@ pub const AVG_DURATION_BETWEEN_TRADES_PATH: &str = "/get_avg_duration_between_tr
 pub const VWAP: &str = "/get_vwap/:pool_name";
 pub const OBI: &str = "/orderbook_imbalance/:pool_name";
 pub const FILLS_24H_SUMMARY: &str = "/fills_24h_summary";
+pub const VOLUME: &str = "/volume/:pool_name";
 
 #[derive(Clone)]
 pub struct AppState {
@@ -197,6 +198,7 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
         )
         .route(VWAP, get(get_vwap))
         .route(FILLS_24H_SUMMARY, get(get_order_fill_24h_summary))
+        .route(VOLUME, get(get_volume_last_n_days))
         .with_state(state.clone());
 
     db_routes
@@ -1752,6 +1754,7 @@ pub trait ParameterUtil {
     fn volume_in_base(&self) -> bool;
 
     fn limit(&self) -> i64;
+    fn days(&self) -> i64;
 }
 
 impl ParameterUtil for HashMap<String, String> {
@@ -1781,6 +1784,12 @@ impl ParameterUtil for HashMap<String, String> {
 
     fn limit(&self) -> i64 {
         self.get("limit")
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(1)
+    }
+    // defaults to 1
+    fn days(&self) -> i64 {
+        self.get("days")
             .and_then(|v| v.parse::<i64>().ok())
             .unwrap_or(1)
     }

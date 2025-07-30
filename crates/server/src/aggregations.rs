@@ -1,4 +1,5 @@
-use chrono::DateTime;
+use bigdecimal::BigDecimal;
+use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 use std::{collections::HashMap, i64, sync::Arc};
 use url::Url;
@@ -14,7 +15,7 @@ use sui_types::{
 
 use crate::server::{parse_type_input, DEEPBOOK_PACKAGE_ID, LEVEL2_FUNCTION, LEVEL2_MODULE};
 
-use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+use diesel::{dsl::sum, ExpressionMethods, QueryDsl, SelectableHelper};
 
 use axum::{
     extract::{Path, Query, State},
@@ -547,4 +548,36 @@ pub async fn get_order_fill_24h_summary(
         .collect();
 
     Ok(Json(rows))
+}
+
+pub async fn get_volume_last_n_days(
+    Path(pool_name): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<BigDecimal>, DeepBookError> {
+    // Lookup pool_id by name
+    let pool_id = state
+        .reader
+        .get_pool_id_by_name(&pool_name)
+        .await
+        .map_err(|_| DeepBookError::InternalError("No valid pool names provided".to_string()))?;
+
+    // Parse days from query parameters
+    let days = params.days();
+    let now = Utc::now().naive_utc();
+    let start_time = now - Duration::days(days);
+    let result: Option<BigDecimal> = state
+        .reader
+        .results(
+            view::ohlcv_1min::table
+                .filter(view::ohlcv_1min::pool_id.eq(pool_id))
+                .filter(view::ohlcv_1min::bucket.ge(start_time))
+                .select(sum(view::ohlcv_1min::volume_base)),
+        )
+        .await
+        .map(|rows: Vec<Option<BigDecimal>>| rows.into_iter().flatten().next())
+        .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
+
+    // Return 0 if NULL
+    Ok(Json(result.unwrap_or_else(|| BigDecimal::from(0))))
 }
