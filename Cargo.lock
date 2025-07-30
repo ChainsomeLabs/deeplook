@@ -2089,6 +2089,7 @@ dependencies = [
  "futures",
  "prometheus",
  "redis",
+ "serde",
  "serde_json",
  "sui-indexer-alt-metrics",
  "sui-json-rpc-types",

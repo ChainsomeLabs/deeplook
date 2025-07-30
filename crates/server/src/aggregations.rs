@@ -1,5 +1,6 @@
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Duration, Utc};
+use serde::Serialize;
 use serde_json::{json, Value};
 use std::{collections::HashMap, i64, sync::Arc};
 use url::Url;
@@ -15,7 +16,12 @@ use sui_types::{
 
 use crate::server::{parse_type_input, DEEPBOOK_PACKAGE_ID, LEVEL2_FUNCTION, LEVEL2_MODULE};
 
-use diesel::{dsl::sum, ExpressionMethods, QueryDsl, SelectableHelper};
+use diesel::{
+    dsl::sum,
+    sql_query,
+    sql_types::{Numeric, Text},
+    ExpressionMethods, QueryDsl, SelectableHelper,
+};
 
 use axum::{
     extract::{Path, Query, State},
@@ -580,4 +586,60 @@ pub async fn get_volume_last_n_days(
 
     // Return 0 if NULL
     Ok(Json(result.unwrap_or_else(|| BigDecimal::from(0))))
+}
+
+#[derive(Debug, Serialize, diesel::QueryableByName)]
+pub struct VolumeWindowed {
+    #[diesel(sql_type = Numeric)]
+    pub volume_1d: BigDecimal,
+    #[diesel(sql_type = Numeric)]
+    pub volume_7d: BigDecimal,
+    #[diesel(sql_type = Numeric)]
+    pub volume_30d: BigDecimal,
+}
+
+pub async fn get_volume_multi_window(
+    Path(pool_name): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<HashMap<String, BigDecimal>>, DeepBookError> {
+    // Lookup pool_id by name
+    let pool_id = state
+        .reader
+        .get_pool_id_by_name(&pool_name)
+        .await
+        .map_err(|_| DeepBookError::InternalError("No valid pool names provided".to_string()))?;
+
+    // SQL query using FILTER clause for each time window
+    let result: Option<VolumeWindowed> = state
+        .reader
+        .results(
+            sql_query(
+                r#"
+            SELECT
+                SUM(volume_base) FILTER (WHERE bucket >= now() - INTERVAL '1 day')  AS volume_1d,
+                SUM(volume_base) FILTER (WHERE bucket >= now() - INTERVAL '7 day')  AS volume_7d,
+                SUM(volume_base) FILTER (WHERE bucket >= now() - INTERVAL '30 day') AS volume_30d
+            FROM ohlcv_1min
+            WHERE pool_id = $1
+            "#,
+            )
+            .bind::<Text, _>(pool_id.clone()),
+        )
+        .await
+        .map(|mut rows: Vec<VolumeWindowed>| rows.pop())
+        .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
+
+    // Prepare default values if missing
+    let summary = result.unwrap_or(VolumeWindowed {
+        volume_1d: BigDecimal::from(0),
+        volume_7d: BigDecimal::from(0),
+        volume_30d: BigDecimal::from(0),
+    });
+
+    let mut map = HashMap::new();
+    map.insert("1d".to_string(), summary.volume_1d);
+    map.insert("7d".to_string(), summary.volume_7d);
+    map.insert("30d".to_string(), summary.volume_30d);
+
+    Ok(Json(map))
 }
