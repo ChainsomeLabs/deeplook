@@ -84,7 +84,7 @@ fn get_txs(
     start_checkpoint: i64,
     end_checkpoint: i64,
     mut conn: PgConnection,
-) -> Result<(Vec<OrderStep>, NaiveDateTime), HistoricOrderbookError> {
+) -> Result<(Vec<OrderStep>, Option<NaiveDateTime>), HistoricOrderbookError> {
     let updates: Vec<OrderStep> = schema::order_updates::table
         .filter(schema::order_updates::pool_id.eq(&pool_id))
         .filter(schema::order_updates::checkpoint.gt(start_checkpoint))
@@ -142,7 +142,7 @@ fn get_txs(
 
     let max_timestamp = match combined.iter().map(|step| step.timestamp).max() {
         Some(v) => v,
-        None => return Err(HistoricOrderbookError::NoTimestampInRange),
+        None => return Ok((vec![], None)),
     };
 
     info!(
@@ -151,7 +151,7 @@ fn get_txs(
         end_checkpoint
     );
 
-    Ok((combined, max_timestamp))
+    Ok((combined, Some(max_timestamp)))
 }
 
 fn has_overlap(asks: &HashMap<i64, i64>, bids: &HashMap<i64, i64>) -> bool {
@@ -212,7 +212,7 @@ pub fn get_historic_orderbook(
     let last_snapshot =
         get_latest_snapshot(&mut conn, pool_id).expect("failed getting last snapshot");
 
-    let (_current_time, start_checkpoint, mut asks, mut bids) =
+    let (current_time, start_checkpoint, mut asks, mut bids) =
         values_from_orderbook_option(last_snapshot);
 
     if start_checkpoint >= end_checkpoint {
@@ -225,6 +225,11 @@ pub fn get_historic_orderbook(
         end_checkpoint,
         PgConnection::establish(&database_url.as_str()).expect("Error connecting to DB"),
     )?;
+
+    let timestamp = match ts {
+        Some(t) => t,
+        None => current_time,
+    };
 
     for order in orders {
         let side = if order.is_bid { &mut bids } else { &mut asks };
@@ -278,6 +283,6 @@ pub fn get_historic_orderbook(
         pool_id: pool_id.to_string(),
         asks: asks_serde,
         bids: bids_serde,
-        timestamp: ts,
+        timestamp,
     })
 }
