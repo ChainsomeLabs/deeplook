@@ -48,7 +48,9 @@ use tokio::join;
 use tokio_util::sync::CancellationToken;
 
 use crate::aggregations::{
-    avg_duration_between_trades, avg_trade_size, get_ohlcv, get_vwap, orderbook_imbalance,
+    avg_duration_between_trades, avg_trade_size, get_avg_trade_size_multi_window, get_ohlcv,
+    get_order_fill_24h_summary, get_volume_last_n_days, get_volume_multi_window, get_vwap,
+    orderbook_imbalance,
 };
 
 pub const SUI_MAINNET_URL: &str = "https://fullnode.mainnet.sui.io:443";
@@ -82,6 +84,7 @@ pub const ORDER_FILLS_PATH: &str = "/order_fills/:pool_name";
 pub const WEBSOCKET_ORDERBOOK: &str = "/ws_orderbook/:pool_name";
 pub const WEBSOCKET_ORDERBOOK_BESTS: &str = "/ws_orderbook_bests/:pool_name";
 pub const WEBSOCKET_ORDERBOOK_SPREAD: &str = "/ws_orderbook_spread/:pool_name";
+pub const WEBSOCKET_LATEST_TRADES: &str = "/latest_trades/:pool_name";
 
 // Data Aggregation
 pub const OHLCV_PATH: &str = "/ohlcv/:pool_name";
@@ -89,6 +92,10 @@ pub const AVG_TRADE_PATH: &str = "/get_avg_trade_size/:pool_name";
 pub const AVG_DURATION_BETWEEN_TRADES_PATH: &str = "/get_avg_duration_between_trades/:pool_name";
 pub const VWAP: &str = "/get_vwap/:pool_name";
 pub const OBI: &str = "/orderbook_imbalance/:pool_name";
+pub const FILLS_24H_SUMMARY: &str = "/fills_24h_summary";
+pub const VOLUME: &str = "/volume/:pool_name";
+pub const VOLUME_MULTI_WINDOW: &str = "/volume_multi_window/:pool_name";
+pub const AVERAGE_TRADE_SIZE_MULTI_WINDOW: &str = "/average_trade_multi_window/:pool_name";
 
 #[derive(Clone)]
 pub struct AppState {
@@ -184,6 +191,7 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
         .route(WEBSOCKET_ORDERBOOK, get(orderbook_ws))
         .route(WEBSOCKET_ORDERBOOK_BESTS, get(orderbook_bests_ws))
         .route(WEBSOCKET_ORDERBOOK_SPREAD, get(orderbook_spread_ws))
+        .route(WEBSOCKET_LATEST_TRADES, get(latest_trades_ws))
         .with_state((state.clone(), rpc_url));
 
     let aggregation_routes = Router::new()
@@ -194,6 +202,13 @@ pub(crate) fn make_router(state: Arc<AppState>, rpc_url: Url) -> Router {
             get(avg_duration_between_trades),
         )
         .route(VWAP, get(get_vwap))
+        .route(FILLS_24H_SUMMARY, get(get_order_fill_24h_summary))
+        .route(VOLUME, get(get_volume_last_n_days))
+        .route(VOLUME_MULTI_WINDOW, get(get_volume_multi_window))
+        .route(
+            AVERAGE_TRADE_SIZE_MULTI_WINDOW,
+            get(get_avg_trade_size_multi_window),
+        )
         .with_state(state.clone());
 
     db_routes
@@ -1483,6 +1498,14 @@ async fn orderbook_ws(
     ws.on_upgrade(move |socket| handle_orderbook_socket(socket, pool_name, state.0.clone()))
 }
 
+async fn latest_trades_ws(
+    ws: WebSocketUpgrade,
+    Path(pool_name): Path<String>,
+    State(state): State<(Arc<AppState>, Url)>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_latest_trades_socket(socket, pool_name, state.0.clone()))
+}
+
 async fn orderbook_bests_ws(
     ws: WebSocketUpgrade,
     Path(pool_name): Path<String>,
@@ -1623,6 +1646,70 @@ async fn handle_bests_socket(mut socket: WebSocket, pool_name: String, state: Ar
     }
 }
 
+async fn handle_latest_trades_socket(
+    mut socket: WebSocket,
+    pool_name: String,
+    state: Arc<AppState>,
+) {
+    // Redis key that stores the order‑book JSON
+    let redis_key = format!("latest_trades::{}", pool_name);
+
+    // Clone the async cache and extract the underlying Redis client
+    let cache = state.reader.cache.clone();
+    let mut pubsub = cache
+        .client
+        .get_async_pubsub()
+        .await
+        .expect("Failed getting pubsub");
+    let channel = format!("__keyspace@0__:{}", redis_key);
+
+    pubsub
+        .subscribe(&channel)
+        .await
+        .expect("Failed to subscribe to key‑space");
+
+    let mut redis_stream = pubsub.on_message();
+
+    // Helper to fetch the full JSON array from Redis
+    let fetch_latest = || async {
+        cache
+            .get_array::<serde_json::Value>(&redis_key)
+            .await
+            .ok()
+            .flatten()
+            .map(|array| serde_json::to_string(&array).ok())
+            .flatten()
+    };
+
+    // Send initial array if present
+    let mut last_sent = fetch_latest().await;
+    if let Some(snapshot) = &last_sent {
+        let _ = socket.send(Message::Text(snapshot.clone())).await;
+    }
+
+    // Main loop: respond to Redis events or client disconnect
+    loop {
+        tokio::select! {
+            // Client closed WebSocket
+            maybe_msg = socket.recv() => {
+                if maybe_msg.is_none() {
+                    break;
+                }
+            }
+
+            // Redis published a change event
+            Some(_msg) = redis_stream.next() => {
+                if let Some(current) = fetch_latest().await {
+                    if Some(&current) != last_sent.as_ref() {
+                        last_sent = Some(current.clone());
+                        let _ = socket.send(Message::Text(current)).await;
+                    }
+                }
+            }
+        }
+    }
+}
+
 async fn handle_spread_socket(mut socket: WebSocket, pool_name: String, state: Arc<AppState>) {
     // Redis key that stores the order‑book JSON
     let redis_key = format!("orderbook::{}", pool_name);
@@ -1749,6 +1836,7 @@ pub trait ParameterUtil {
     fn volume_in_base(&self) -> bool;
 
     fn limit(&self) -> i64;
+    fn days(&self) -> i64;
 }
 
 impl ParameterUtil for HashMap<String, String> {
@@ -1778,6 +1866,12 @@ impl ParameterUtil for HashMap<String, String> {
 
     fn limit(&self) -> i64 {
         self.get("limit")
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(1)
+    }
+    // defaults to 1
+    fn days(&self) -> i64 {
+        self.get("days")
             .and_then(|v| v.parse::<i64>().ok())
             .unwrap_or(1)
     }

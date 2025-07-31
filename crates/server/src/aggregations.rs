@@ -1,5 +1,7 @@
-use chrono::DateTime;
-use serde_json::Value;
+use bigdecimal::BigDecimal;
+use chrono::{DateTime, Duration, Utc};
+use serde::Serialize;
+use serde_json::{json, Value};
 use std::{collections::HashMap, i64, sync::Arc};
 use url::Url;
 
@@ -14,7 +16,14 @@ use sui_types::{
 
 use crate::server::{parse_type_input, DEEPBOOK_PACKAGE_ID, LEVEL2_FUNCTION, LEVEL2_MODULE};
 
-use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+use diesel::prelude::*;
+use diesel::query_dsl::JoinOnDsl;
+use diesel::{
+    dsl::{sql, sum},
+    sql_query,
+    sql_types::{Numeric, Text},
+    ExpressionMethods, QueryDsl, SelectableHelper,
+};
 
 use axum::{
     extract::{Path, Query, State},
@@ -23,7 +32,10 @@ use axum::{
 
 use crate::error::DeepBookError;
 use crate::server::{AppState, ParameterUtil};
-use deeplook_schema::{models::OHLCV1min, schema, view};
+use deeplook_schema::{
+    models::{OHLCV1min, OrderFill24hSummary},
+    schema, view,
+};
 
 // const ALLOWED_OHLCV_INTERVALS: &[&str] = &["1min", "15min", "1h"];
 
@@ -514,4 +526,174 @@ fn sum_quantities(orderbook_side: &[Value]) -> f64 {
             }
         })
         .sum()
+}
+
+pub async fn get_order_fill_24h_summary(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<HashMap<String, Value>>>, DeepBookError> {
+    // Load results from the view
+    let result: Vec<OrderFill24hSummary> = state
+        .reader
+        .results(view::order_fill_24h_summary_view::dsl::order_fill_24h_summary_view)
+        .await
+        .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
+
+    // Format into JSON-compatible HashMaps
+    let rows: Vec<HashMap<String, Value>> = result
+        .into_iter()
+        .map(|row| {
+            HashMap::from([
+                ("pool_id".to_string(), json!(row.pool_id)),
+                ("base_volume_24h".to_string(), json!(row.base_volume_24h)),
+                (
+                    "trade_count_24h".to_string(),
+                    json!(row.trade_count_24h.unwrap_or(0.into())),
+                ),
+                ("price_open_24h".to_string(), json!(row.price_open_24h)),
+                ("price_close_24h".to_string(), json!(row.price_close_24h)),
+            ])
+        })
+        .collect();
+
+    Ok(Json(rows))
+}
+
+pub async fn get_volume_last_n_days(
+    Path(pool_name): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<BigDecimal>, DeepBookError> {
+    // Lookup pool_id by name
+    let pool_id = state
+        .reader
+        .get_pool_id_by_name(&pool_name)
+        .await
+        .map_err(|_| DeepBookError::InternalError("No valid pool names provided".to_string()))?;
+
+    // Parse days from query parameters
+    let days = params.days();
+    let now = Utc::now().naive_utc();
+    let start_time = now - Duration::days(days);
+    let result: Option<BigDecimal> = state
+        .reader
+        .results(
+            view::ohlcv_1min::table
+                .filter(view::ohlcv_1min::pool_id.eq(pool_id))
+                .filter(view::ohlcv_1min::bucket.ge(start_time))
+                .select(sum(view::ohlcv_1min::volume_base)),
+        )
+        .await
+        .map(|rows: Vec<Option<BigDecimal>>| rows.into_iter().flatten().next())
+        .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
+
+    // Return 0 if NULL
+    Ok(Json(result.unwrap_or_else(|| BigDecimal::from(0))))
+}
+
+#[derive(Debug, Serialize, diesel::QueryableByName)]
+pub struct VolumeWindowed {
+    #[diesel(sql_type = Numeric)]
+    pub volume_1d: BigDecimal,
+    #[diesel(sql_type = Numeric)]
+    pub volume_7d: BigDecimal,
+    #[diesel(sql_type = Numeric)]
+    pub volume_30d: BigDecimal,
+}
+
+pub async fn get_volume_multi_window(
+    Path(pool_name): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<HashMap<String, BigDecimal>>, DeepBookError> {
+    // Lookup pool_id by name
+    let pool_id = state
+        .reader
+        .get_pool_id_by_name(&pool_name)
+        .await
+        .map_err(|_| DeepBookError::InternalError("No valid pool names provided".to_string()))?;
+
+    // SQL query using FILTER clause for each time window
+    let result: Option<VolumeWindowed> = state
+        .reader
+        .results(
+            sql_query(
+                r#"
+            SELECT
+                SUM(volume_base) FILTER (WHERE bucket >= now() - INTERVAL '1 day')  AS volume_1d,
+                SUM(volume_base) FILTER (WHERE bucket >= now() - INTERVAL '7 day')  AS volume_7d,
+                SUM(volume_base) FILTER (WHERE bucket >= now() - INTERVAL '30 day') AS volume_30d
+            FROM ohlcv_1min
+            WHERE pool_id = $1
+            "#,
+            )
+            .bind::<Text, _>(pool_id.clone()),
+        )
+        .await
+        .map(|mut rows: Vec<VolumeWindowed>| rows.pop())
+        .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
+
+    // Prepare default values if missing
+    let summary = result.unwrap_or(VolumeWindowed {
+        volume_1d: BigDecimal::from(0),
+        volume_7d: BigDecimal::from(0),
+        volume_30d: BigDecimal::from(0),
+    });
+
+    let mut map = HashMap::new();
+    map.insert("1d".to_string(), summary.volume_1d);
+    map.insert("7d".to_string(), summary.volume_7d);
+    map.insert("30d".to_string(), summary.volume_30d);
+
+    Ok(Json(map))
+}
+
+pub async fn get_avg_trade_size_multi_window(
+    Path(pool_name): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, DeepBookError> {
+    let pool_id = state
+        .reader
+        .get_pool_id_by_name(&pool_name)
+        .await
+        .map_err(|_| DeepBookError::InternalError("Invalid pool name".into()))?;
+
+    let now = Utc::now().naive_utc();
+
+    let durations = vec![
+        ("5min", Duration::minutes(5)),
+        ("15min", Duration::minutes(15)),
+        ("1h", Duration::hours(1)),
+        ("24h", Duration::hours(24)),
+    ];
+
+    let mut result_map = serde_json::Map::new();
+
+    for (label, duration) in durations {
+        let start_time = now - duration;
+
+        let query = view::ohlcv_1min::table
+            .inner_join(
+                view::trade_count_1min::table.on(view::ohlcv_1min::bucket
+                    .eq(view::trade_count_1min::bucket)
+                    .and(view::ohlcv_1min::pool_id.eq(view::trade_count_1min::pool_id))),
+            )
+            .filter(view::ohlcv_1min::pool_id.eq(pool_id.clone()))
+            .filter(view::ohlcv_1min::bucket.ge(start_time))
+            .select(sql::<Numeric>(
+                "COALESCE(AVG(volume_base / NULLIF(trade_count, 0)), 0)",
+            ));
+
+        let rows: Vec<BigDecimal> = state
+            .reader
+            .results(query)
+            .await
+            .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
+
+        let avg = rows
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| BigDecimal::from(0));
+        result_map.insert(label.to_string(), json!(avg));
+    }
+
+    Ok(Json(serde_json::Value::Object(result_map)))
 }

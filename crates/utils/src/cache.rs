@@ -7,6 +7,8 @@ use url::Url;
 
 use redis::Commands;
 
+const LATEST_TRADE_SIZE: usize = 100;
+
 impl Clone for Cache {
     fn clone(&self) -> Self {
         let client = redis::Client::open(self._connection_string.clone())
@@ -18,6 +20,7 @@ impl Clone for Cache {
         Cache {
             _connection_string: self._connection_string.clone(),
             redis_connection,
+            latest_trades_size: LATEST_TRADE_SIZE,
         }
     }
 }
@@ -25,6 +28,7 @@ impl Clone for Cache {
 pub struct Cache {
     _connection_string: Url,
     redis_connection: Connection,
+    latest_trades_size: usize,
 }
 
 #[derive(Debug)]
@@ -45,6 +49,7 @@ impl Cache {
         Cache {
             _connection_string: connection_string,
             redis_connection,
+            latest_trades_size: LATEST_TRADE_SIZE,
         }
     }
 
@@ -82,6 +87,20 @@ impl Cache {
         let deserialized =
             serde_json::from_str(&val).map_err(|e| CacheError::DeSerialization(e))?;
         Ok(Some(deserialized))
+    }
+
+    pub fn push<T: Serialize>(&mut self, key: &str, value: &T) -> Result<(), CacheError> {
+        let serialized = serde_json::to_string(value).map_err(CacheError::Serialization)?;
+
+        self.redis_connection
+            .rpush::<&str, String, ()>(key, serialized)
+            .map_err(CacheError::Redis)?;
+
+        self.redis_connection
+            .ltrim::<&str, ()>(key, -(self.latest_trades_size as isize), -1)
+            .map_err(CacheError::Redis)?;
+
+        Ok(())
     }
 }
 
@@ -121,5 +140,30 @@ impl AsyncCache {
             .await
             .map_err(CacheError::Redis)?;
         conn.set(key, json).await.map_err(CacheError::Redis)
+    }
+
+    pub async fn get_array<T: DeserializeOwned>(
+        &self,
+        key: &str,
+    ) -> Result<Option<Vec<T>>, CacheError> {
+        let mut conn = self
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(CacheError::Redis)?;
+
+        let items: Vec<String> = conn.lrange(key, 0, -1).await.map_err(CacheError::Redis)?;
+
+        if items.is_empty() {
+            return Ok(None);
+        }
+
+        let mut result = Vec::with_capacity(items.len());
+        for item in items {
+            let value: T = serde_json::from_str(&item).map_err(CacheError::DeSerialization)?;
+            result.push(value);
+        }
+
+        Ok(Some(result))
     }
 }

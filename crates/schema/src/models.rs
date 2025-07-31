@@ -291,3 +291,12 @@ pub struct OrderbookSnapshot {
     pub bids: serde_json::Value,
     pub timestamp: NaiveDateTime,
 }
+
+#[derive(Debug, Clone, Queryable, Serialize, Deserialize)]
+pub struct OrderFill24hSummary {
+    pub pool_id: String,
+    pub base_volume_24h: BigDecimal,
+    pub trade_count_24h: Option<BigDecimal>,
+    pub price_open_24h: i64,
+    pub price_close_24h: i64,
+}
