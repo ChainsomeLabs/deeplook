@@ -23,6 +23,9 @@ This project provides a robust and efficient system for accessing **historical a
   - [Prometheus](https://prometheus.io/) for metrics
   - [Grafana](https://grafana.com/) dashboards for visual monitoring
 
+- 🧩 **Dashboard**  
+  Dashboard showing important data is live at [deeplook.carmine.finance](https://deeplook.carmine.finance/).
+
 ---
 
 ## Architecture
@@ -41,22 +44,22 @@ All endpoints return JSON and are publicly accessible via HTTPS.
 ### `/get_pools`
 
 Returns metadata for all available pools.  
-[Example](https://api.sui.carmine.finance/get_pools)
+[Example](https://api.deeplook.carmine.finance/get_pools)
 
 ### `/ohlcv/<pool_name>?start_time=<unix_sec>&end_time=<unix_sec>`
 
 Returns OHLCV candlestick data for the specified time range.  
-[Example](https://api.sui.carmine.finance/ohlcv/XBTC_USDC?start_time=1750370400&end_time=1750888800)
+[Example](https://api.deeplook.carmine.finance/ohlcv/XBTC_USDC?start_time=1750370400&end_time=1750888800)
 
 ### `/orderbook/<pool_name>`
 
 Returns the current orderbook snapshot and the timestamp of the last update.  
-[Example](https://api.sui.carmine.finance/orderbook/SUI_USDC)
+[Example](https://api.deeplook.carmine.finance/orderbook/SUI_USDC)
 
 ### `/order_fills/<pool_name>?start_time=<unix_sec>&end_time=<unix_sec>`
 
 Returns all trade-level order fills within the specified time window.  
-[Example](https://api.sui.carmine.finance/order_fills/SUI_USDC?start_time=1750866244&end_time=1750886244)
+[Example](https://api.deeplook.carmine.finance/order_fills/SUI_USDC?start_time=1750866244&end_time=1750886244)
 
 ---
 ## WebSocket endpoints
@@ -82,22 +85,22 @@ Endpoints that aggregate data to provide further insights.
 ### `/aggregation/avg_trade_size/<pool_name>?start_time=<unix_sec>&end_time=<unix_sec>`
 
 Returns the average base and quote volume per trade.  
-[Example](https://api.sui.carmine.finance/get_avg_trade_size/SUI_USDC)
+[Example](https://api.deeplook.carmine.finance/get_avg_trade_size/SUI_USDC)
 
 ### `/aggregation/avg_duration_between_trades/<pool_name>?start_time=<unix_sec>&end_time=<unix_sec>`
 
 Returns the average time in milliseconds between consecutive trades.  
-[Example](https://api.sui.carmine.finance/get_avg_duration_between_trades/SUI_USDC)
+[Example](https://api.deeplook.carmine.finance/get_avg_duration_between_trades/SUI_USDC)
 
 ### `/aggregation/vwap/<pool_name>?start_time=<unix_sec>&end_time=<unix_sec>`
 
 Returns the Volume-Weighted Average Price (VWAP) over the selected time window.  
-[Example](https://api.sui.carmine.finance/get_vwap/SUI_USDC?start_time=1750866244&end_time=1750886244)
+[Example](https://api.deeplook.carmine.finance/get_vwap/SUI_USDC?start_time=1750866244&end_time=1750886244)
 
 ### `/aggregation/orderbook_imbalance/<pool_name>?depth=<int>&level=<1|2>`
 
 Returns the normalized order book imbalance (0–100 scale) at a given depth and level.  
-[Example](https://api.sui.carmine.finance/orderbook_imbalance/SUI_USDC?depth=100&level=2)
+[Example](https://api.deeplook.carmine.finance/orderbook_imbalance/SUI_USDC?depth=100&level=2)
 
 ---
 
