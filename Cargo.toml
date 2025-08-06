@@ -12,7 +12,7 @@ members = [
 [workspace.dependencies]
 bigdecimal = { version = "0.4.8", features = ["serde"] }
 chrono = { version = "=0.4.41", features = ["clock", "serde"] }
-tokio = "1.45.1"
+tokio = "1.47.1"
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"
 serde_with = "3.14.0"
@@ -30,13 +30,13 @@ tokio-util = "0.7.15"
 tracing = "0.1.41"
 tracing-subscriber = "0.3"
 
-sui-indexer-alt-metrics = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
-sui-indexer-alt-framework = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
+sui-indexer-alt-metrics = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }
+sui-indexer-alt-framework = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }
 sui-sdk-types = { git = "https://github.com/mystenlabs/sui-rust-sdk", features = [
   "serde",
 ], rev = "86a9e06" }
-telemetry-subscribers = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
-sui-pg-db = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
-move-core-types = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
-sui-types = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
-sui-sdk = { git = "https://github.com/MystenLabs/sui.git", rev = "822bae4" }
+telemetry-subscribers = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }
+sui-pg-db = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }
+move-core-types = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }
+sui-types = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }
+sui-sdk = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }

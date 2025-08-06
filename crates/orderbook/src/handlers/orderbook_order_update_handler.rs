@@ -9,9 +9,9 @@ use deeplook_schema::models::{OrderFill, OrderUpdate, OrderUpdateStatus};
 use move_core_types::language_storage::StructTag;
 use std::collections::HashMap;
 use std::sync::Arc;
-use sui_indexer_alt_framework::db::{Connection, Db};
 use sui_indexer_alt_framework::pipeline::Processor;
 use sui_indexer_alt_framework::pipeline::concurrent::Handler;
+use sui_indexer_alt_framework::postgres::{Connection, Db};
 use sui_types::full_checkpoint_content::CheckpointData;
 
 type TransactionMetadata = (String, u64, u64, String, String);

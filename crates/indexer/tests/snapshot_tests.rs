@@ -5,7 +5,6 @@ use deeplook_indexer::handlers::order_fill_handler::OrderFillHandler;
 use deeplook_indexer::handlers::order_update_handler::OrderUpdateHandler;
 use deeplook_indexer::handlers::pool_price_handler::PoolPriceHandler;
 use deeplook_indexer::DeeplookEnv;
-use deeplook_schema::MIGRATIONS;
 use fastcrypto::hash::{HashFunction, Sha256};
 use insta::assert_json_snapshot;
 use serde_json::Value;
@@ -71,7 +70,6 @@ where
     let temp_db = TempDb::new()?;
     let url = temp_db.database().url();
     let db = Arc::new(Db::for_write(url.clone(), DbArgs::default()).await?);
-    db.run_migrations(MIGRATIONS).await?;
     let mut conn = db.connect().await?;
 
     // Test setup based on provided test_name
