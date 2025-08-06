@@ -14,7 +14,10 @@ use sui_types::{
     transaction::{Argument, CallArg, Command, ObjectArg, ProgrammableMoveCall, TransactionKind},
 };
 
-use crate::server::{parse_type_input, DEEPBOOK_PACKAGE_ID, LEVEL2_FUNCTION, LEVEL2_MODULE, naive_datetime_from_millis};
+use crate::server::{
+    naive_datetime_from_millis, parse_type_input, DEEPBOOK_PACKAGE_ID, LEVEL2_FUNCTION,
+    LEVEL2_MODULE,
+};
 
 use diesel::prelude::*;
 use diesel::query_dsl::JoinOnDsl;
@@ -131,10 +134,9 @@ pub async fn avg_trade_size(
     let query = schema::order_fills::table
         .filter(schema::order_fills::pool_id.eq(pool_id))
         .filter(schema::order_fills::timestamp.between(
-            naive_datetime_from_millis(start_time)?, 
-            naive_datetime_from_millis(end_time)?
-        )
-        );
+            naive_datetime_from_millis(start_time)?,
+            naive_datetime_from_millis(end_time)?,
+        ));
 
     let full_query = query.select((
         schema::order_fills::base_quantity,

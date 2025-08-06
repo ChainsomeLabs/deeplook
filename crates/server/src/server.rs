@@ -973,12 +973,11 @@ async fn trade_count(
         .start_time() // Convert to milliseconds
         .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
 
-    let query = schema::order_fills::table
-        .select(count_star())
-        .filter(schema::order_fills::timestamp.between(
+    let query = schema::order_fills::table.select(count_star()).filter(
+        schema::order_fills::timestamp.between(
             naive_datetime_from_millis(start_time)?,
-            naive_datetime_from_millis(end_time)?
-        )
+            naive_datetime_from_millis(end_time)?,
+        ),
     );
 
     let result = state.reader.first(query).await?;
@@ -1422,12 +1421,10 @@ pub async fn get_order_fills(
         .results(
             schema::order_fills::table
                 .select(OrderFill::as_select())
-                .filter(
-                    schema::order_fills::timestamp.between(
-                        naive_datetime_from_millis(start_time)?,
-                        naive_datetime_from_millis(end_time)?
-                    )
-                )
+                .filter(schema::order_fills::timestamp.between(
+                    naive_datetime_from_millis(start_time)?,
+                    naive_datetime_from_millis(end_time)?,
+                ))
                 .filter(schema::order_fills::pool_id.eq(pool_id)),
         )
         .await?;
@@ -1888,9 +1885,9 @@ impl ParameterUtil for HashMap<String, String> {
 }
 
 pub fn naive_datetime_from_millis(millis: i64) -> Result<NaiveDateTime, DeepBookError> {
-    Ok(
-        chrono::DateTime::from_timestamp_millis(millis).ok_or(
-            DeepBookError::InternalError("Invalid timestamp".to_string())
-        )?.naive_utc()
-    )
+    Ok(chrono::DateTime::from_timestamp_millis(millis)
+        .ok_or(DeepBookError::InternalError(
+            "Invalid timestamp".to_string(),
+        ))?
+        .naive_utc())
 }
