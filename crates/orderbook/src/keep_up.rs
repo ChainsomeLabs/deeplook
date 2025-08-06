@@ -5,10 +5,10 @@ use deeplook_indexer::{DeeplookEnv, MAINNET_REMOTE_STORE_URL};
 use prometheus::Registry;
 use sui_indexer_alt_framework::{
     Indexer, IndexerArgs,
-    db::DbArgs,
     ingestion::{ClientArgs, IngestionConfig},
+    postgres::{Db, DbArgs},
 };
-use sui_indexer_alt_metrics::{MetricsArgs, MetricsService};
+use sui_indexer_alt_metrics::{MetricsArgs, MetricsService, db::DbConnectionStatsCollector};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 use url::Url;
@@ -31,13 +31,22 @@ pub async fn keep_up(
     let cancel = CancellationToken::new();
     let metrics = MetricsService::new(
         MetricsArgs { metrics_address },
-        registry,
+        registry.clone(),
         cancel.child_token(),
     );
 
+    // Prepare the store for the indexer
+    let store = Db::for_write(database_url, DbArgs::default())
+        .await
+        .context("Failed to connect to database")?;
+
+    registry.register(Box::new(DbConnectionStatsCollector::new(
+        Some("deepbook_indexer_db"),
+        store.clone(),
+    )))?;
+
     let mut indexer = Indexer::new(
-        database_url,
-        DbArgs::default(),
+        store,
         IndexerArgs {
             first_checkpoint: Some(start),
             last_checkpoint: None,
@@ -56,7 +65,6 @@ pub async fn keep_up(
             ingest_concurrency: 1,
             retry_interval_ms: 200,
         },
-        None,
         metrics.registry(),
         cancel.clone(),
     )

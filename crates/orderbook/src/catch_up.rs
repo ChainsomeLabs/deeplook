@@ -3,8 +3,12 @@ use std::{net::SocketAddr, sync::Arc};
 use anyhow::Context;
 use deeplook_indexer::{DeeplookEnv, MAINNET_REMOTE_STORE_URL};
 use prometheus::Registry;
-use sui_indexer_alt_framework::{Indexer, IndexerArgs, db::DbArgs, ingestion::ClientArgs};
-use sui_indexer_alt_metrics::{MetricsArgs, MetricsService};
+use sui_indexer_alt_framework::{
+    Indexer, IndexerArgs,
+    ingestion::ClientArgs,
+    postgres::{Db, DbArgs},
+};
+use sui_indexer_alt_metrics::{MetricsArgs, MetricsService, db::DbConnectionStatsCollector};
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
@@ -25,9 +29,19 @@ pub async fn catch_up(
     let cancel = CancellationToken::new();
     let metrics = MetricsService::new(
         MetricsArgs { metrics_address },
-        registry,
+        registry.clone(),
         cancel.child_token(),
     );
+
+    // Prepare the store for the indexer
+    let store = Db::for_write(database_url, DbArgs::default())
+        .await
+        .context("Failed to connect to database")?;
+
+    registry.register(Box::new(DbConnectionStatsCollector::new(
+        Some("deepbook_indexer_db"),
+        store.clone(),
+    )))?;
 
     let lowest_checkpoint = orderbook_managers
         .values()
@@ -41,8 +55,7 @@ pub async fn catch_up(
         .expect("failed getting starting checkpoint") as u64;
 
     let mut indexer = Indexer::new(
-        database_url,
-        DbArgs::default(),
+        store,
         IndexerArgs {
             first_checkpoint: Some(lowest_checkpoint + 1),
             last_checkpoint: Some(end),
@@ -57,7 +70,6 @@ pub async fn catch_up(
             rpc_password: None,
         },
         Default::default(),
-        None,
         metrics.registry(),
         cancel.clone(),
     )
