@@ -40,21 +40,16 @@ use deeplook_schema::{
     schema, view,
 };
 
-// const ALLOWED_OHLCV_INTERVALS: &[&str] = &["1min", "15min", "1h"];
-
 pub async fn get_ohlcv(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<HashMap<String, Value>>>, DeepBookError> {
-    let pool_id = match state.reader.get_pool_id_by_name(&pool_name.as_str()).await {
-        Err(_) => {
-            return Err(DeepBookError::InternalError(
-                "No valid pool names provided".to_string(),
-            ));
-        }
-        Ok(v) => v,
-    };
+    let (pool_id, base_decimals, quote_decimals) =
+        state.reader.get_pool_decimals(&pool_name).await?;
+
+    // let (pool_id, base_decimals, quote_decimals) =
+    //     state.reader.get_pool_decimals(&pool_name).await?;
     // Parse start_time and end_time from query parameters (in seconds) and convert to milliseconds
     let end_time = params.end_time();
     let start_time = params
@@ -68,18 +63,6 @@ pub async fn get_ohlcv(
         .unwrap()
         .naive_utc();
 
-    // let aggregation = params
-    //     .get("interval")
-    //     .map(String::as_str).unwrap();
-
-    // if !ALLOWED_OHLCV_INTERVALS.contains(&aggregation) {
-    //     return Err(DeepBookError::InternalError(format!(
-    //         "Invalid interval '{}'. Allowed values are: {}",
-    //         aggregation,
-    //         ALLOWED_OHLCV_INTERVALS.join(", ")
-    //     )));
-    // }
-
     let result: Vec<OHLCV1min> = state
         .reader
         .results(
@@ -90,21 +73,35 @@ pub async fn get_ohlcv(
         )
         .await?;
 
+    let base_decimals = base_decimals as u8;
+    let quote_decimals = quote_decimals as u8;
+
+    let base_factor = (10f64).powf(base_decimals.into());
+    let quote_factor = (10f64).powf(quote_decimals.into());
+
+    let price_factor = (10f64).powf((9 - base_decimals + quote_decimals).into());
+
     Ok(Json(
         result
             .into_iter()
             .map(|ohlc| {
-                let vol_b = ohlc.volume_base.to_plain_string();
-                let vol_q = ohlc.volume_quote.to_plain_string();
+                let vol_b = (ohlc.volume_base / base_factor).to_plain_string();
+                let vol_q = (ohlc.volume_quote / quote_factor).to_plain_string();
+
+                let open = ohlc.open as f64 / price_factor;
+                let high = ohlc.high as f64 / price_factor;
+                let low = ohlc.low as f64 / price_factor;
+                let close = ohlc.close as f64 / price_factor;
+
                 HashMap::from([
                     (
                         "timestamp".to_string(),
                         Value::from(ohlc.bucket.and_utc().timestamp()),
                     ),
-                    ("open".to_string(), Value::from(ohlc.open)),
-                    ("high".to_string(), Value::from(ohlc.high)),
-                    ("low".to_string(), Value::from(ohlc.low)),
-                    ("close".to_string(), Value::from(ohlc.close)),
+                    ("open".to_string(), Value::from(open)),
+                    ("high".to_string(), Value::from(high)),
+                    ("low".to_string(), Value::from(low)),
+                    ("close".to_string(), Value::from(close)),
                     ("volume_base".to_string(), Value::from(vol_b)),
                     ("volume_quote".to_string(), Value::from(vol_q)),
                 ])
