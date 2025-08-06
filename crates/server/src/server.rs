@@ -11,6 +11,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use chrono::NaiveDateTime;
 use deeplook_schema::models::{BalancesSummary, OrderFill, Pool};
 use deeplook_schema::*;
 use diesel::dsl::count_star;
@@ -974,7 +975,11 @@ async fn trade_count(
 
     let query = schema::order_fills::table
         .select(count_star())
-        .filter(schema::order_fills::checkpoint_timestamp_ms.between(start_time, end_time));
+        .filter(schema::order_fills::timestamp.between(
+            naive_datetime_from_millis(start_time)?,
+            naive_datetime_from_millis(end_time)?
+        )
+    );
 
     let result = state.reader.first(query).await?;
     Ok(Json(result))
@@ -1417,7 +1422,12 @@ pub async fn get_order_fills(
         .results(
             schema::order_fills::table
                 .select(OrderFill::as_select())
-                .filter(schema::order_fills::checkpoint_timestamp_ms.between(start_time, end_time))
+                .filter(
+                    schema::order_fills::timestamp.between(
+                        naive_datetime_from_millis(start_time)?,
+                        naive_datetime_from_millis(end_time)?
+                    )
+                )
                 .filter(schema::order_fills::pool_id.eq(pool_id)),
         )
         .await?;
@@ -1875,4 +1885,12 @@ impl ParameterUtil for HashMap<String, String> {
             .and_then(|v| v.parse::<i64>().ok())
             .unwrap_or(1)
     }
+}
+
+pub fn naive_datetime_from_millis(millis: i64) -> Result<NaiveDateTime, DeepBookError> {
+    Ok(
+        chrono::DateTime::from_timestamp_millis(millis).ok_or(
+            DeepBookError::InternalError("Invalid timestamp".to_string())
+        )?.naive_utc()
+    )
 }
