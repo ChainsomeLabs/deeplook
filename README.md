@@ -66,15 +66,19 @@ Returns all trade-level order fills within the specified time window.
 ### `/ws_orderbook/<pool_name>`
 
 Returns whole orderbook snapshot via websocket that updates everytime a relevant event happens.  
-- Example: wss://api.sui.carmine.finance/ws_orderbook/SEND_USDC
+- Example: wss://api.sui.carmine.finance/ws_orderbook/SUI_USDC
 
 ### `/ws_orderbook_bests/:pool_names`
 Returns current best levels via websocket on every orderbook update (even if the update doesn't happen on best levels).
-- Example: wss://api.sui.carmine.finance/ws_orderbook_bests/SEND_USDC
+- Example: wss://api.sui.carmine.finance/ws_orderbook_bests/SUI_USDC
 
 ### `/ws_orderbook_spread/:pool_name`
 Returns current spread via websocket on every orderbook update (even if the update doesn't happen on best levels).
-- Example: wss://api.sui.carmine.finance/ws_orderbook_spread/SEND_USDC
+- Example: wss://api.sui.carmine.finance/ws_orderbook_spread/SUI_USDC
+
+### `/latest_trades/:pool_name`
+Returns latest 100 trades every time a new trade is observed. 
+- Example wss://api.sui.carmine.finance/latest_trades/SUI_USDC
 
 ---
 
@@ -86,6 +90,21 @@ Endpoints that aggregate data to provide further insights.
 
 Returns the average base and quote volume per trade.  
 [Example](https://api.deeplook.carmine.finance/get_avg_trade_size/SUI_USDC)
+
+### `/average_trade_multi_window/:pool_name`
+
+Returns the average volume per trade in following windows: `[5min, 15min, 1h, 24h]`
+[Example](https://api.deeplook.carmine.finance/average_trade_multi_window/SUI_USDC)
+
+
+### `/volume/:pool_name`
+Returns the total volume in last n-days.
+[Example](https://api.deeplook.carmine.finance/volume/SUI_USDC?days=10)
+
+### `/volume_multi_window/:pool_name`
+
+Returns the total volume in following windows: `[5min, 15min, 1h, 24h]`
+[Example](https://api.deeplook.carmine.finance/volume_multi_window/SUI_USDC)
 
 ### `/aggregation/avg_duration_between_trades/<pool_name>?start_time=<unix_sec>&end_time=<unix_sec>`
 
@@ -101,6 +120,11 @@ Returns the Volume-Weighted Average Price (VWAP) over the selected time window.
 
 Returns the normalized order book imbalance (0–100 scale) at a given depth and level.  
 [Example](https://api.deeplook.carmine.finance/orderbook_imbalance/SUI_USDC?depth=100&level=2)
+
+### `/fills_24h_summary`
+
+Returns trading summary of all pools in the last 24 hours.
+[Example](https://api.deeplook.carmine.finance/fills_24h_summary)
 
 ---
 
