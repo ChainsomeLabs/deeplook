@@ -37,7 +37,7 @@ use crate::error::DeepBookError;
 use crate::server::{AppState, ParameterUtil};
 use deeplook_schema::{
     models::{OHLCV1min, OrderFill24hSummary},
-    schema, view::{self, order_fill_24h_summary_view::base_volume_24h},
+    schema, view
 };
 
 pub async fn get_ohlcv(
@@ -642,7 +642,7 @@ pub async fn get_volume_multi_window(
         volume_30d: BigDecimal::from(0),
     });
 
-    let base_decimals: u32 = base_decimals as u32;
+    let base_decimals = base_decimals as u32;
 
     let mut map = HashMap::new();
     map.insert("1d".to_string(), summary.volume_1d.to_decimal_f64(base_decimals).unwrap_or(0.0));
