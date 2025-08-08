@@ -37,7 +37,7 @@ use crate::error::DeepBookError;
 use crate::server::{AppState, ParameterUtil};
 use deeplook_schema::{
     models::{OHLCV1min, OrderFill24hSummary},
-    schema, view,
+    schema, view::{self, order_fill_24h_summary_view::base_volume_24h},
 };
 
 pub async fn get_ohlcv(
@@ -588,10 +588,8 @@ pub async fn get_volume_last_n_days(
         .map(|rows: Vec<Option<BigDecimal>>| rows.into_iter().flatten().next())
         .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
 
-    let base_factor = (10i64).pow(base_decimals as u32);
     let base_volume = result
-        .map(|x| x / base_factor)
-        .and_then(|x| x.to_f64())
+        .to_decimal_f64(base_decimals as u32)
         .unwrap_or(0.0);
     
     // Returns 0 if NULL
@@ -608,16 +606,14 @@ pub struct VolumeWindowed {
     pub volume_30d: BigDecimal,
 }
 
+
 pub async fn get_volume_multi_window(
     Path(pool_name): Path<String>,
     State(state): State<Arc<AppState>>,
-) -> Result<Json<HashMap<String, BigDecimal>>, DeepBookError> {
+) -> Result<Json<HashMap<String, f64>>, DeepBookError> {
     // Lookup pool_id by name
-    let pool_id = state
-        .reader
-        .get_pool_id_by_name(&pool_name)
-        .await
-        .map_err(|_| DeepBookError::InternalError("No valid pool names provided".to_string()))?;
+    let (pool_id, base_decimals, _) =
+        state.reader.get_pool_decimals(&pool_name).await?;
 
     // SQL query using FILTER clause for each time window
     let result: Option<VolumeWindowed> = state
@@ -646,10 +642,12 @@ pub async fn get_volume_multi_window(
         volume_30d: BigDecimal::from(0),
     });
 
+    let base_decimals: u32 = base_decimals as u32;
+
     let mut map = HashMap::new();
-    map.insert("1d".to_string(), summary.volume_1d);
-    map.insert("7d".to_string(), summary.volume_7d);
-    map.insert("30d".to_string(), summary.volume_30d);
+    map.insert("1d".to_string(), summary.volume_1d.to_decimal_f64(base_decimals).unwrap_or(0.0));
+    map.insert("7d".to_string(), summary.volume_7d.to_decimal_f64(base_decimals).unwrap_or(0.0));
+    map.insert("30d".to_string(), summary.volume_30d.to_decimal_f64(base_decimals).unwrap_or(0.0));
 
     Ok(Json(map))
 }
@@ -704,4 +702,25 @@ pub async fn get_avg_trade_size_multi_window(
     }
 
     Ok(Json(serde_json::Value::Object(result_map)))
+}
+
+pub trait ToDecimalFloat64 {
+    fn to_decimal_f64(self, decimals: u32) -> Option<f64>;
+}
+
+impl ToDecimalFloat64 for Option<BigDecimal> {
+    fn to_decimal_f64(self, decimals: u32) -> Option<f64> {
+        let factor = (10i64).pow(decimals);
+        self
+            .map(|x| x / factor)
+            .and_then(|x| x.to_f64())
+    }
+}
+
+impl ToDecimalFloat64 for BigDecimal {
+    fn to_decimal_f64(self, decimals: u32) -> Option<f64> {
+        let factor = (10i64).pow(decimals);
+
+        (self / factor).to_f64()
+    }
 }
