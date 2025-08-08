@@ -1,4 +1,4 @@
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -565,13 +565,12 @@ pub async fn get_volume_last_n_days(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
     State(state): State<Arc<AppState>>,
-) -> Result<Json<BigDecimal>, DeepBookError> {
+) -> Result<Json<f64>, DeepBookError> {
     // Lookup pool_id by name
-    let pool_id = state
-        .reader
-        .get_pool_id_by_name(&pool_name)
-        .await
-        .map_err(|_| DeepBookError::InternalError("No valid pool names provided".to_string()))?;
+
+    let (pool_id, base_decimals, _) =
+        state.reader.get_pool_decimals(&pool_name).await?;
+
 
     // Parse days from query parameters
     let days = params.days();
@@ -589,8 +588,14 @@ pub async fn get_volume_last_n_days(
         .map(|rows: Vec<Option<BigDecimal>>| rows.into_iter().flatten().next())
         .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
 
-    // Return 0 if NULL
-    Ok(Json(result.unwrap_or_else(|| BigDecimal::from(0))))
+    let base_factor = (10i64).pow(base_decimals as u32);
+    let base_volume = result
+        .map(|x| x / base_factor)
+        .and_then(|x| x.to_f64())
+        .unwrap_or(0.0);
+    
+    // Returns 0 if NULL
+    Ok(Json(base_volume))
 }
 
 #[derive(Debug, Serialize, diesel::QueryableByName)]
