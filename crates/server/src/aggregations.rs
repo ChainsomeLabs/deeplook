@@ -656,11 +656,8 @@ pub async fn get_avg_trade_size_multi_window(
     Path(pool_name): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<serde_json::Value>, DeepBookError> {
-    let pool_id = state
-        .reader
-        .get_pool_id_by_name(&pool_name)
-        .await
-        .map_err(|_| DeepBookError::InternalError("Invalid pool name".into()))?;
+    let (pool_id, base_decimals, _) =
+        state.reader.get_pool_decimals(&pool_name).await?;
 
     let now = Utc::now().naive_utc();
 
@@ -697,8 +694,13 @@ pub async fn get_avg_trade_size_multi_window(
         let avg = rows
             .into_iter()
             .next()
-            .unwrap_or_else(|| BigDecimal::from(0));
-        result_map.insert(label.to_string(), json!(avg));
+            .to_decimal_f64(base_decimals as u32)
+            .unwrap_or(0.0);
+
+        result_map.insert(
+            label.to_string(), 
+            json!(avg)
+        );
     }
 
     Ok(Json(serde_json::Value::Object(result_map)))
