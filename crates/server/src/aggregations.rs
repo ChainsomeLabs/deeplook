@@ -1,4 +1,4 @@
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -565,13 +565,10 @@ pub async fn get_volume_last_n_days(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
     State(state): State<Arc<AppState>>,
-) -> Result<Json<BigDecimal>, DeepBookError> {
+) -> Result<Json<f64>, DeepBookError> {
     // Lookup pool_id by name
-    let pool_id = state
-        .reader
-        .get_pool_id_by_name(&pool_name)
-        .await
-        .map_err(|_| DeepBookError::InternalError("No valid pool names provided".to_string()))?;
+
+    let (pool_id, base_decimals, _) = state.reader.get_pool_decimals(&pool_name).await?;
 
     // Parse days from query parameters
     let days = params.days();
@@ -589,8 +586,10 @@ pub async fn get_volume_last_n_days(
         .map(|rows: Vec<Option<BigDecimal>>| rows.into_iter().flatten().next())
         .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
 
-    // Return 0 if NULL
-    Ok(Json(result.unwrap_or_else(|| BigDecimal::from(0))))
+    let base_volume = result.to_decimal_f64(base_decimals as u32).unwrap_or(0.0);
+
+    // Returns 0 if NULL
+    Ok(Json(base_volume))
 }
 
 #[derive(Debug, Serialize, diesel::QueryableByName)]
@@ -606,13 +605,9 @@ pub struct VolumeWindowed {
 pub async fn get_volume_multi_window(
     Path(pool_name): Path<String>,
     State(state): State<Arc<AppState>>,
-) -> Result<Json<HashMap<String, BigDecimal>>, DeepBookError> {
+) -> Result<Json<HashMap<String, f64>>, DeepBookError> {
     // Lookup pool_id by name
-    let pool_id = state
-        .reader
-        .get_pool_id_by_name(&pool_name)
-        .await
-        .map_err(|_| DeepBookError::InternalError("No valid pool names provided".to_string()))?;
+    let (pool_id, base_decimals, _) = state.reader.get_pool_decimals(&pool_name).await?;
 
     // SQL query using FILTER clause for each time window
     let result: Option<VolumeWindowed> = state
@@ -641,10 +636,30 @@ pub async fn get_volume_multi_window(
         volume_30d: BigDecimal::from(0),
     });
 
+    let base_decimals = base_decimals as u32;
+
     let mut map = HashMap::new();
-    map.insert("1d".to_string(), summary.volume_1d);
-    map.insert("7d".to_string(), summary.volume_7d);
-    map.insert("30d".to_string(), summary.volume_30d);
+    map.insert(
+        "1d".to_string(),
+        summary
+            .volume_1d
+            .to_decimal_f64(base_decimals)
+            .unwrap_or(0.0),
+    );
+    map.insert(
+        "7d".to_string(),
+        summary
+            .volume_7d
+            .to_decimal_f64(base_decimals)
+            .unwrap_or(0.0),
+    );
+    map.insert(
+        "30d".to_string(),
+        summary
+            .volume_30d
+            .to_decimal_f64(base_decimals)
+            .unwrap_or(0.0),
+    );
 
     Ok(Json(map))
 }
@@ -653,11 +668,7 @@ pub async fn get_avg_trade_size_multi_window(
     Path(pool_name): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<serde_json::Value>, DeepBookError> {
-    let pool_id = state
-        .reader
-        .get_pool_id_by_name(&pool_name)
-        .await
-        .map_err(|_| DeepBookError::InternalError("Invalid pool name".into()))?;
+    let (pool_id, base_decimals, _) = state.reader.get_pool_decimals(&pool_name).await?;
 
     let now = Utc::now().naive_utc();
 
@@ -694,9 +705,30 @@ pub async fn get_avg_trade_size_multi_window(
         let avg = rows
             .into_iter()
             .next()
-            .unwrap_or_else(|| BigDecimal::from(0));
+            .to_decimal_f64(base_decimals as u32)
+            .unwrap_or(0.0);
+
         result_map.insert(label.to_string(), json!(avg));
     }
 
     Ok(Json(serde_json::Value::Object(result_map)))
+}
+
+pub trait ToDecimalFloat64 {
+    fn to_decimal_f64(self, decimals: u32) -> Option<f64>;
+}
+
+impl ToDecimalFloat64 for Option<BigDecimal> {
+    fn to_decimal_f64(self, decimals: u32) -> Option<f64> {
+        let factor = (10i64).pow(decimals);
+        self.map(|x| x / factor).and_then(|x| x.to_f64())
+    }
+}
+
+impl ToDecimalFloat64 for BigDecimal {
+    fn to_decimal_f64(self, decimals: u32) -> Option<f64> {
+        let factor = (10i64).pow(decimals);
+
+        (self / factor).to_f64()
+    }
 }
