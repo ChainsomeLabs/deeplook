@@ -15,6 +15,32 @@ diesel::table! {
 }
 
 diesel::table! {
+    ohlcv_15min (bucket, pool_id) {
+        bucket -> Timestamp,
+        pool_id -> Text,
+        open -> BigInt,
+        high -> BigInt,
+        low -> BigInt,
+        close -> BigInt,
+        volume_base -> Numeric,
+        volume_quote -> Numeric,
+    }
+}
+
+diesel::table! {
+    ohlcv_1h (bucket, pool_id) {
+        bucket -> Timestamp,
+        pool_id -> Text,
+        open -> BigInt,
+        high -> BigInt,
+        low -> BigInt,
+        close -> BigInt,
+        volume_base -> Numeric,
+        volume_quote -> Numeric,
+    }
+}
+
+diesel::table! {
     order_fill_24h_summary_view (pool_id) {
         pool_id -> Text,
         base_volume_24h -> Numeric,

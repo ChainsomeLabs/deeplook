@@ -48,66 +48,109 @@ pub async fn get_ohlcv(
     let (pool_id, base_decimals, quote_decimals) =
         state.reader.get_pool_decimals(&pool_name).await?;
 
-    // let (pool_id, base_decimals, quote_decimals) =
-    //     state.reader.get_pool_decimals(&pool_name).await?;
     // Parse start_time and end_time from query parameters (in seconds) and convert to milliseconds
     let end_time = params.end_time();
     let start_time = params
-        .start_time() // Convert to milliseconds
+        .start_time()
         .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
 
-    let start_time_date = DateTime::from_timestamp_millis(start_time)
+    let start_dt = DateTime::from_timestamp_millis(start_time)
         .unwrap()
         .naive_utc();
-    let end_time_date = DateTime::from_timestamp_millis(end_time)
+    let end_dt = DateTime::from_timestamp_millis(end_time)
         .unwrap()
         .naive_utc();
 
-    let result: Vec<OHLCV1min> = state
-        .reader
-        .results(
-            view::ohlcv_1min::table
-                .select(OHLCV1min::as_select())
-                .filter(view::ohlcv_1min::bucket.between(start_time_date, end_time_date))
-                .filter(view::ohlcv_1min::pool_id.eq(pool_id)),
-        )
-        .await?;
+    // Decide granularity to target <= MAX_POINTS datapoints
+    const MAX_POINTS: i64 = 1500;
+    let dur = end_dt - start_dt;
+    let n_min = dur.num_minutes().max(0);
+    let n_15m = (n_min + 14) / 15;
+    let n_1h = dur.num_hours().max(0);
 
-    let base_decimals = base_decimals as u8;
-    let quote_decimals = quote_decimals as u8;
+    enum Bucket {
+        Min1,
+        Min15,
+        Hour1,
+    }
+    let bucket = if n_min <= MAX_POINTS {
+        Bucket::Min1
+    } else if n_15m <= MAX_POINTS {
+        Bucket::Min15
+    } else {
+        Bucket::Hour1
+    };
 
-    let base_factor = (10f64).powf(base_decimals.into());
-    let quote_factor = (10f64).powf(quote_decimals.into());
+    // Query the right cagg; all three share the same schema, so reuse OHLCV1min model
+    let rows: Vec<OHLCV1min> = match bucket {
+        Bucket::Min1 => {
+            state
+                .reader
+                .results(
+                    view::ohlcv_1min::table
+                        .select(OHLCV1min::as_select())
+                        .filter(view::ohlcv_1min::pool_id.eq(&pool_id))
+                        .filter(view::ohlcv_1min::bucket.between(start_dt, end_dt)),
+                )
+                .await?
+        }
+        Bucket::Min15 => {
+            state
+                .reader
+                .results(
+                    view::ohlcv_15min::table
+                        .select(OHLCV1min::as_select())
+                        .filter(view::ohlcv_15min::pool_id.eq(&pool_id))
+                        .filter(view::ohlcv_15min::bucket.between(start_dt, end_dt)),
+                )
+                .await?
+        }
+        Bucket::Hour1 => {
+            state
+                .reader
+                .results(
+                    view::ohlcv_1h::table
+                        .select(OHLCV1min::as_select())
+                        .filter(view::ohlcv_1h::pool_id.eq(&pool_id))
+                        .filter(view::ohlcv_1h::bucket.between(start_dt, end_dt)),
+                )
+                .await?
+        }
+    };
 
-    let price_factor = (10f64).powf((9 - base_decimals + quote_decimals).into());
+    // Same scaling math as before
+    let bd = base_decimals as u8;
+    let qd = quote_decimals as u8;
+    let base_factor = (10f64).powf(bd.into());
+    let quote_factor = (10f64).powf(qd.into());
+    let price_factor = (10f64).powf((9i32 - bd as i32 + qd as i32) as f64);
 
-    Ok(Json(
-        result
-            .into_iter()
-            .map(|ohlc| {
-                let vol_b = (ohlc.volume_base / base_factor).to_plain_string();
-                let vol_q = (ohlc.volume_quote / quote_factor).to_plain_string();
+    let out = rows
+        .into_iter()
+        .map(|ohlc| {
+            let vol_b = (ohlc.volume_base / base_factor).to_plain_string();
+            let vol_q = (ohlc.volume_quote / quote_factor).to_plain_string();
+            let open = ohlc.open as f64 / price_factor;
+            let high = ohlc.high as f64 / price_factor;
+            let low = ohlc.low as f64 / price_factor;
+            let close = ohlc.close as f64 / price_factor;
 
-                let open = ohlc.open as f64 / price_factor;
-                let high = ohlc.high as f64 / price_factor;
-                let low = ohlc.low as f64 / price_factor;
-                let close = ohlc.close as f64 / price_factor;
+            HashMap::from([
+                (
+                    "timestamp".to_string(),
+                    Value::from(ohlc.bucket.and_utc().timestamp()),
+                ),
+                ("open".to_string(), Value::from(open)),
+                ("high".to_string(), Value::from(high)),
+                ("low".to_string(), Value::from(low)),
+                ("close".to_string(), Value::from(close)),
+                ("volume_base".to_string(), Value::from(vol_b)),
+                ("volume_quote".to_string(), Value::from(vol_q)),
+            ])
+        })
+        .collect();
 
-                HashMap::from([
-                    (
-                        "timestamp".to_string(),
-                        Value::from(ohlc.bucket.and_utc().timestamp()),
-                    ),
-                    ("open".to_string(), Value::from(open)),
-                    ("high".to_string(), Value::from(high)),
-                    ("low".to_string(), Value::from(low)),
-                    ("close".to_string(), Value::from(close)),
-                    ("volume_base".to_string(), Value::from(vol_b)),
-                    ("volume_quote".to_string(), Value::from(vol_q)),
-                ])
-            })
-            .collect(),
-    ))
+    Ok(Json(out))
 }
 
 pub async fn avg_trade_size(

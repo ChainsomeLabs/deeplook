@@ -282,6 +282,32 @@ pub struct OHLCV1min {
     pub volume_quote: BigDecimal,
 }
 
+#[derive(Queryable, Selectable, Debug, FieldCount)]
+#[diesel(table_name = ohlcv_15min)]
+pub struct OHLCV15min {
+    pub bucket: NaiveDateTime,
+    pub pool_id: String,
+    pub open: i64,
+    pub high: i64,
+    pub low: i64,
+    pub close: i64,
+    pub volume_base: BigDecimal,
+    pub volume_quote: BigDecimal,
+}
+
+#[derive(Queryable, Selectable, Debug, FieldCount)]
+#[diesel(table_name = ohlcv_1h)]
+pub struct OHLCV1h {
+    pub bucket: NaiveDateTime,
+    pub pool_id: String,
+    pub open: i64,
+    pub high: i64,
+    pub low: i64,
+    pub close: i64,
+    pub volume_base: BigDecimal,
+    pub volume_quote: BigDecimal,
+}
+
 #[derive(Debug, Clone, Queryable, Insertable, Serialize, Deserialize)]
 #[diesel(table_name = orderbook_snapshots)]
 pub struct OrderbookSnapshot {
