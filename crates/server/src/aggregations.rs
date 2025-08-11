@@ -19,7 +19,7 @@ use crate::server::{
     LEVEL2_MODULE,
 };
 
-use diesel::prelude::*;
+use diesel::{prelude::*};
 use diesel::query_dsl::JoinOnDsl;
 use diesel::{
     dsl::{sql, sum},
@@ -40,6 +40,13 @@ use deeplook_schema::{
     schema, view,
 };
 
+const AVAILABLE_OHLCV_TIMEFRAMES: [&str;4] = [
+    "1m",
+    "15m",
+    "1h",
+    "4h",
+];
+
 pub async fn get_ohlcv(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
@@ -47,6 +54,8 @@ pub async fn get_ohlcv(
 ) -> Result<Json<Vec<HashMap<String, Value>>>, DeepBookError> {
     let (pool_id, base_decimals, quote_decimals) =
         state.reader.get_pool_decimals(&pool_name).await?;
+
+    let timeframe = params.ohlcv_timeframe();
 
     // Parse start_time and end_time from query parameters (in seconds) and convert to milliseconds
     let end_time = params.end_time();
@@ -61,32 +70,9 @@ pub async fn get_ohlcv(
         .unwrap()
         .naive_utc();
 
-    // Decide granularity to target <= MAX_POINTS datapoints
-    const MAX_POINTS: i64 = 1500;
-    let dur = end_dt - start_dt;
-    let n_min = dur.num_minutes().max(0);
-    let n_15m = (n_min + 14) / 15;
-    let n_1h = dur.num_hours().max(0);
-
-    enum Bucket {
-        Min1,
-        Min15,
-        Hour1,
-        Hour4,
-    }
-    let bucket = if n_min <= MAX_POINTS {
-        Bucket::Min1
-    } else if n_15m <= MAX_POINTS {
-        Bucket::Min15
-    } else if n_1h <= MAX_POINTS {
-        Bucket::Hour1
-    } else {
-        Bucket::Hour4
-    };
-
     // Query the right cagg; reuse the same OHLCV (Queryable-only) model
-    let rows: Vec<OHLCV> = match bucket {
-        Bucket::Min1 => {
+    let rows: Vec<OHLCV> = match timeframe {
+        "1m" => {
             state
                 .reader
                 .results(
@@ -106,7 +92,7 @@ pub async fn get_ohlcv(
                 )
                 .await?
         }
-        Bucket::Min15 => {
+        "15m" => {
             state
                 .reader
                 .results(
@@ -126,7 +112,7 @@ pub async fn get_ohlcv(
                 )
                 .await?
         }
-        Bucket::Hour1 => {
+        "1h" => {
             state
                 .reader
                 .results(
@@ -146,7 +132,7 @@ pub async fn get_ohlcv(
                 )
                 .await?
         }
-        Bucket::Hour4 => {
+        "4h" => {
             state
                 .reader
                 .results(
@@ -165,6 +151,17 @@ pub async fn get_ohlcv(
                         .filter(view::ohlcv_4h::bucket.between(start_dt, end_dt)),
                 )
                 .await?
+        }
+        _  => {
+            return Err(
+                DeepBookError::InternalError(
+                    format!(
+                        "Invalid timeframe `{}`, must be one of: [{}]",
+                        timeframe,
+                        AVAILABLE_OHLCV_TIMEFRAMES.join(",")
+                    )
+                )
+            )
         }
     };
 

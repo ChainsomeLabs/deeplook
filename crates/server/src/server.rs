@@ -1844,6 +1844,7 @@ pub trait ParameterUtil {
 
     fn limit(&self) -> i64;
     fn days(&self) -> i64;
+    fn ohlcv_timeframe(&self) -> &str;
 }
 
 impl ParameterUtil for HashMap<String, String> {
@@ -1881,6 +1882,13 @@ impl ParameterUtil for HashMap<String, String> {
         self.get("days")
             .and_then(|v| v.parse::<i64>().ok())
             .unwrap_or(1)
+    }
+
+    /// Defaults to 1m
+    fn ohlcv_timeframe(&self) -> &str {
+        self.get("timeframe")
+            .map(String::as_str)
+            .unwrap_or("1m")
     }
 }
 
