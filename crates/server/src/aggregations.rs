@@ -72,13 +72,16 @@ pub async fn get_ohlcv(
         Min1,
         Min15,
         Hour1,
+        Hour4,
     }
     let bucket = if n_min <= MAX_POINTS {
         Bucket::Min1
     } else if n_15m <= MAX_POINTS {
         Bucket::Min15
-    } else {
+    } else if n_1h <= MAX_POINTS {
         Bucket::Hour1
+    } else {
+        Bucket::Hour4
     };
 
     // Query the right cagg; all three share the same schema, so reuse OHLCV1min model
@@ -113,6 +116,17 @@ pub async fn get_ohlcv(
                         .select(OHLCV1min::as_select())
                         .filter(view::ohlcv_1h::pool_id.eq(&pool_id))
                         .filter(view::ohlcv_1h::bucket.between(start_dt, end_dt)),
+                )
+                .await?
+        }
+        Bucket::Hour1 => {
+            state
+                .reader
+                .results(
+                    view::ohlcv_4h::table
+                        .select(OHLCV1min::as_select())
+                        .filter(view::ohlcv_4h::pool_id.eq(&pool_id))
+                        .filter(view::ohlcv_4h::bucket.between(start_dt, end_dt)),
                 )
                 .await?
         }
