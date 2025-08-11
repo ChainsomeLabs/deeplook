@@ -655,31 +655,51 @@ pub async fn get_volume_last_n_days(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
     State(state): State<Arc<AppState>>,
-) -> Result<Json<f64>, DeepBookError> {
+) -> Result<Json<HashMap<String, f64>>, DeepBookError> {
     // Lookup pool_id by name
 
-    let (pool_id, base_decimals, _) = state.reader.get_pool_decimals(&pool_name).await?;
+    let (pool_id, base_decimals, quote_decimals) = state.reader.get_pool_decimals(&pool_name).await?;
 
     // Parse days from query parameters
     let days = params.days();
     let now = Utc::now().naive_utc();
     let start_time = now - Duration::days(days);
-    let result: Option<BigDecimal> = state
-        .reader
-        .results(
-            view::ohlcv_1min::table
-                .filter(view::ohlcv_1min::pool_id.eq(pool_id))
-                .filter(view::ohlcv_1min::bucket.ge(start_time))
-                .select(sum(view::ohlcv_1min::volume_base)),
-        )
-        .await
-        .map(|rows: Vec<Option<BigDecimal>>| rows.into_iter().flatten().next())
-        .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
 
-    let base_volume = result.to_decimal_f64(base_decimals as u32).unwrap_or(0.0);
+    let result: Option<(BigDecimal, BigDecimal)> = state
+    .reader
+    .results(
+        view::ohlcv_1min::table
+            .filter(view::ohlcv_1min::pool_id.eq(pool_id))
+            .filter(view::ohlcv_1min::bucket.ge(start_time))
+            .select((
+                sum(view::ohlcv_1min::volume_base),
+                sum(view::ohlcv_1min::volume_quote),
+            )),
+    )
+    .await
+    .map(|rows: Vec<(Option<BigDecimal>, Option<BigDecimal>)>| {
+        rows.into_iter()
+            .map(|(base, quote)| {
+                (
+                    base.unwrap_or_else(|| BigDecimal::from(0)),
+                    quote.unwrap_or_else(|| BigDecimal::from(0)),
+                )
+            })
+            .next()
+    })
+    .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
+        
+    
+    let (base_volume, quote_volume) = result.unwrap_or((BigDecimal::new(0.into(), 0), BigDecimal::new(0.into(), 0)));
 
-    // Returns 0 if NULL
-    Ok(Json(base_volume))
+    let response = HashMap::from(
+        [
+            ("base_volume".to_string(), base_volume.to_decimal_f64(base_decimals as u32).unwrap_or(0.0)),
+            ("quote_volume".to_string(), quote_volume.to_decimal_f64(quote_decimals as u32).unwrap_or(0.0)),
+        ]
+    );
+
+    Ok(Json(response))
 }
 
 #[derive(Debug, Serialize, diesel::QueryableByName)]
