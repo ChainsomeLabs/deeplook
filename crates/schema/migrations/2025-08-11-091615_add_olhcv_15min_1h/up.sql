@@ -72,8 +72,3 @@ SELECT add_continuous_aggregate_policy(
 CREATE INDEX IF NOT EXISTS ohlcv_15min_pool_time_idx ON ohlcv_15min (pool_id, bucket);
 CREATE INDEX IF NOT EXISTS ohlcv_1h_pool_time_idx    ON ohlcv_1h    (pool_id, bucket);
 CREATE INDEX IF NOT EXISTS ohlcv_4h_pool_time_idx    ON ohlcv_4h    (pool_id, bucket);
-
--- Immediately populate the aggregates
-CALL refresh_continuous_aggregate('ohlcv_15min', NULL, NULL);
-CALL refresh_continuous_aggregate('ohlcv_1h', NULL, NULL);
-CALL refresh_continuous_aggregate('ohlcv_4h', NULL, NULL);
