@@ -1886,9 +1886,7 @@ impl ParameterUtil for HashMap<String, String> {
 
     /// Defaults to 1m
     fn ohlcv_timeframe(&self) -> &str {
-        self.get("timeframe")
-            .map(String::as_str)
-            .unwrap_or("1m")
+        self.get("timeframe").map(String::as_str).unwrap_or("1m")
     }
 }
 

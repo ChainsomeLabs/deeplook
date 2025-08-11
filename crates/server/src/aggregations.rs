@@ -19,7 +19,7 @@ use crate::server::{
     LEVEL2_MODULE,
 };
 
-use diesel::{prelude::*};
+use diesel::prelude::*;
 use diesel::query_dsl::JoinOnDsl;
 use diesel::{
     dsl::{sql, sum},
@@ -40,12 +40,7 @@ use deeplook_schema::{
     schema, view,
 };
 
-const AVAILABLE_OHLCV_TIMEFRAMES: [&str;4] = [
-    "1m",
-    "15m",
-    "1h",
-    "4h",
-];
+const AVAILABLE_OHLCV_TIMEFRAMES: [&str; 4] = ["1m", "15m", "1h", "4h"];
 
 pub async fn get_ohlcv(
     Path(pool_name): Path<String>,
@@ -152,16 +147,12 @@ pub async fn get_ohlcv(
                 )
                 .await?
         }
-        _  => {
-            return Err(
-                DeepBookError::InternalError(
-                    format!(
-                        "Invalid timeframe `{}`, must be one of: [{}]",
-                        timeframe,
-                        AVAILABLE_OHLCV_TIMEFRAMES.join(",")
-                    )
-                )
-            )
+        _ => {
+            return Err(DeepBookError::InternalError(format!(
+                "Invalid timeframe `{}`, must be one of: [{}]",
+                timeframe,
+                AVAILABLE_OHLCV_TIMEFRAMES.join(",")
+            )))
         }
     };
 
@@ -658,7 +649,8 @@ pub async fn get_volume_last_n_days(
 ) -> Result<Json<HashMap<String, f64>>, DeepBookError> {
     // Lookup pool_id by name
 
-    let (pool_id, base_decimals, quote_decimals) = state.reader.get_pool_decimals(&pool_name).await?;
+    let (pool_id, base_decimals, quote_decimals) =
+        state.reader.get_pool_decimals(&pool_name).await?;
 
     // Parse days from query parameters
     let days = params.days();
@@ -666,38 +658,46 @@ pub async fn get_volume_last_n_days(
     let start_time = now - Duration::days(days);
 
     let result: Option<(BigDecimal, BigDecimal)> = state
-    .reader
-    .results(
-        view::ohlcv_1min::table
-            .filter(view::ohlcv_1min::pool_id.eq(pool_id))
-            .filter(view::ohlcv_1min::bucket.ge(start_time))
-            .select((
-                sum(view::ohlcv_1min::volume_base),
-                sum(view::ohlcv_1min::volume_quote),
-            )),
-    )
-    .await
-    .map(|rows: Vec<(Option<BigDecimal>, Option<BigDecimal>)>| {
-        rows.into_iter()
-            .map(|(base, quote)| {
-                (
-                    base.unwrap_or_else(|| BigDecimal::from(0)),
-                    quote.unwrap_or_else(|| BigDecimal::from(0)),
-                )
-            })
-            .next()
-    })
-    .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
-        
-    
-    let (base_volume, quote_volume) = result.unwrap_or((BigDecimal::new(0.into(), 0), BigDecimal::new(0.into(), 0)));
+        .reader
+        .results(
+            view::ohlcv_1min::table
+                .filter(view::ohlcv_1min::pool_id.eq(pool_id))
+                .filter(view::ohlcv_1min::bucket.ge(start_time))
+                .select((
+                    sum(view::ohlcv_1min::volume_base),
+                    sum(view::ohlcv_1min::volume_quote),
+                )),
+        )
+        .await
+        .map(|rows: Vec<(Option<BigDecimal>, Option<BigDecimal>)>| {
+            rows.into_iter()
+                .map(|(base, quote)| {
+                    (
+                        base.unwrap_or_else(|| BigDecimal::from(0)),
+                        quote.unwrap_or_else(|| BigDecimal::from(0)),
+                    )
+                })
+                .next()
+        })
+        .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
 
-    let response = HashMap::from(
-        [
-            ("base_volume".to_string(), base_volume.to_decimal_f64(base_decimals as u32).unwrap_or(0.0)),
-            ("quote_volume".to_string(), quote_volume.to_decimal_f64(quote_decimals as u32).unwrap_or(0.0)),
-        ]
-    );
+    let (base_volume, quote_volume) =
+        result.unwrap_or((BigDecimal::new(0.into(), 0), BigDecimal::new(0.into(), 0)));
+
+    let response = HashMap::from([
+        (
+            "base_volume".to_string(),
+            base_volume
+                .to_decimal_f64(base_decimals as u32)
+                .unwrap_or(0.0),
+        ),
+        (
+            "quote_volume".to_string(),
+            quote_volume
+                .to_decimal_f64(quote_decimals as u32)
+                .unwrap_or(0.0),
+        ),
+    ]);
 
     Ok(Json(response))
 }
