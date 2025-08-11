@@ -119,7 +119,7 @@ pub async fn get_ohlcv(
                 )
                 .await?
         }
-        Bucket::Hour1 => {
+        Bucket::Hour4 => {
             state
                 .reader
                 .results(
