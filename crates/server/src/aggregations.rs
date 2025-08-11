@@ -25,7 +25,7 @@ use diesel::{
     dsl::{sql, sum},
     sql_query,
     sql_types::{Numeric, Text},
-    ExpressionMethods, QueryDsl, SelectableHelper,
+    ExpressionMethods, QueryDsl,
 };
 
 use axum::{
@@ -36,7 +36,7 @@ use axum::{
 use crate::error::DeepBookError;
 use crate::server::{AppState, ParameterUtil};
 use deeplook_schema::{
-    models::{OHLCV1min, OrderFill24hSummary},
+    models::{OrderFill24hSummary, OHLCV},
     schema, view,
 };
 
@@ -84,15 +84,24 @@ pub async fn get_ohlcv(
         Bucket::Hour4
     };
 
-    // Query the right cagg; all three share the same schema, so reuse OHLCV1min model
-    let rows: Vec<OHLCV1min> = match bucket {
+    // Query the right cagg; reuse the same OHLCV (Queryable-only) model
+    let rows: Vec<OHLCV> = match bucket {
         Bucket::Min1 => {
             state
                 .reader
                 .results(
                     view::ohlcv_1min::table
-                        .select(OHLCV1min::as_select())
-                        .filter(view::ohlcv_1min::pool_id.eq(&pool_id))
+                        .select((
+                            view::ohlcv_1min::bucket,
+                            view::ohlcv_1min::pool_id,
+                            view::ohlcv_1min::open,
+                            view::ohlcv_1min::high,
+                            view::ohlcv_1min::low,
+                            view::ohlcv_1min::close,
+                            view::ohlcv_1min::volume_base,
+                            view::ohlcv_1min::volume_quote,
+                        ))
+                        .filter(view::ohlcv_1min::pool_id.eq(pool_id.to_string()))
                         .filter(view::ohlcv_1min::bucket.between(start_dt, end_dt)),
                 )
                 .await?
@@ -102,8 +111,17 @@ pub async fn get_ohlcv(
                 .reader
                 .results(
                     view::ohlcv_15min::table
-                        .select(OHLCV1min::as_select())
-                        .filter(view::ohlcv_15min::pool_id.eq(&pool_id))
+                        .select((
+                            view::ohlcv_15min::bucket,
+                            view::ohlcv_15min::pool_id,
+                            view::ohlcv_15min::open,
+                            view::ohlcv_15min::high,
+                            view::ohlcv_15min::low,
+                            view::ohlcv_15min::close,
+                            view::ohlcv_15min::volume_base,
+                            view::ohlcv_15min::volume_quote,
+                        ))
+                        .filter(view::ohlcv_15min::pool_id.eq(pool_id.to_string()))
                         .filter(view::ohlcv_15min::bucket.between(start_dt, end_dt)),
                 )
                 .await?
@@ -113,8 +131,17 @@ pub async fn get_ohlcv(
                 .reader
                 .results(
                     view::ohlcv_1h::table
-                        .select(OHLCV1min::as_select())
-                        .filter(view::ohlcv_1h::pool_id.eq(&pool_id))
+                        .select((
+                            view::ohlcv_1h::bucket,
+                            view::ohlcv_1h::pool_id,
+                            view::ohlcv_1h::open,
+                            view::ohlcv_1h::high,
+                            view::ohlcv_1h::low,
+                            view::ohlcv_1h::close,
+                            view::ohlcv_1h::volume_base,
+                            view::ohlcv_1h::volume_quote,
+                        ))
+                        .filter(view::ohlcv_1h::pool_id.eq(pool_id.to_string()))
                         .filter(view::ohlcv_1h::bucket.between(start_dt, end_dt)),
                 )
                 .await?
@@ -124,8 +151,17 @@ pub async fn get_ohlcv(
                 .reader
                 .results(
                     view::ohlcv_4h::table
-                        .select(OHLCV1min::as_select())
-                        .filter(view::ohlcv_4h::pool_id.eq(&pool_id))
+                        .select((
+                            view::ohlcv_4h::bucket,
+                            view::ohlcv_4h::pool_id,
+                            view::ohlcv_4h::open,
+                            view::ohlcv_4h::high,
+                            view::ohlcv_4h::low,
+                            view::ohlcv_4h::close,
+                            view::ohlcv_4h::volume_base,
+                            view::ohlcv_4h::volume_quote,
+                        ))
+                        .filter(view::ohlcv_4h::pool_id.eq(pool_id.to_string()))
                         .filter(view::ohlcv_4h::bucket.between(start_dt, end_dt)),
                 )
                 .await?
