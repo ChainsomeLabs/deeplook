@@ -58,4 +58,4 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(ohlcv_1min, trade_count_1min,);
+diesel::allow_tables_to_appear_in_same_query!(ohlcv_1min, ohlcv_15min, ohlcv_1h, trade_count_1min,);
