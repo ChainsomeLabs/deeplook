@@ -46,10 +46,10 @@ All endpoints return JSON and are publicly accessible via HTTPS.
 Returns metadata for all available pools.  
 [Example](https://api.deeplook.carmine.finance/get_pools)
 
-### `/ohlcv/<pool_name>?start_time=<unix_sec>&end_time=<unix_sec>`
+### `/ohlcv/<pool_name>?start_time=<unix_sec>&end_time=<unix_sec>&timeframe=<1m|15m|1h|4h>`
 
-Returns OHLCV candlestick data for the specified time range.  
-[Example](https://api.deeplook.carmine.finance/ohlcv/XBTC_USDC?start_time=1750370400&end_time=1750888800)
+Returns OHLCV candlestick data for the specified time range and timeframe. Timeframe defaults to 1 min.  
+[Example](https://api.deeplook.carmine.finance/ohlcv/SUI_USDC?start_time=1750370400&end_time=1750888800&timeframe=1h)
 
 ### `/orderbook/<pool_name>`
 
