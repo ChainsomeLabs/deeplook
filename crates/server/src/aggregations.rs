@@ -25,7 +25,7 @@ use diesel::{
     dsl::{sql, sum},
     sql_query,
     sql_types::{Numeric, Text},
-    ExpressionMethods, QueryDsl, SelectableHelper,
+    ExpressionMethods, QueryDsl,
 };
 
 use axum::{
@@ -36,9 +36,11 @@ use axum::{
 use crate::error::DeepBookError;
 use crate::server::{AppState, ParameterUtil};
 use deeplook_schema::{
-    models::{OHLCV1min, OrderFill24hSummary},
+    models::{OrderFill24hSummary, OHLCV},
     schema, view,
 };
+
+const AVAILABLE_OHLCV_TIMEFRAMES: [&str; 4] = ["1m", "15m", "1h", "4h"];
 
 pub async fn get_ohlcv(
     Path(pool_name): Path<String>,
@@ -48,66 +50,145 @@ pub async fn get_ohlcv(
     let (pool_id, base_decimals, quote_decimals) =
         state.reader.get_pool_decimals(&pool_name).await?;
 
-    // let (pool_id, base_decimals, quote_decimals) =
-    //     state.reader.get_pool_decimals(&pool_name).await?;
+    let timeframe = params.ohlcv_timeframe();
+
     // Parse start_time and end_time from query parameters (in seconds) and convert to milliseconds
     let end_time = params.end_time();
     let start_time = params
-        .start_time() // Convert to milliseconds
+        .start_time()
         .unwrap_or_else(|| end_time - 24 * 60 * 60 * 1000);
 
-    let start_time_date = DateTime::from_timestamp_millis(start_time)
+    let start_dt = DateTime::from_timestamp_millis(start_time)
         .unwrap()
         .naive_utc();
-    let end_time_date = DateTime::from_timestamp_millis(end_time)
+    let end_dt = DateTime::from_timestamp_millis(end_time)
         .unwrap()
         .naive_utc();
 
-    let result: Vec<OHLCV1min> = state
-        .reader
-        .results(
-            view::ohlcv_1min::table
-                .select(OHLCV1min::as_select())
-                .filter(view::ohlcv_1min::bucket.between(start_time_date, end_time_date))
-                .filter(view::ohlcv_1min::pool_id.eq(pool_id)),
-        )
-        .await?;
+    // Query the right cagg; reuse the same OHLCV (Queryable-only) model
+    let rows: Vec<OHLCV> = match timeframe {
+        "1m" => {
+            state
+                .reader
+                .results(
+                    view::ohlcv_1min::table
+                        .select((
+                            view::ohlcv_1min::bucket,
+                            view::ohlcv_1min::pool_id,
+                            view::ohlcv_1min::open,
+                            view::ohlcv_1min::high,
+                            view::ohlcv_1min::low,
+                            view::ohlcv_1min::close,
+                            view::ohlcv_1min::volume_base,
+                            view::ohlcv_1min::volume_quote,
+                        ))
+                        .filter(view::ohlcv_1min::pool_id.eq(pool_id.to_string()))
+                        .filter(view::ohlcv_1min::bucket.between(start_dt, end_dt)),
+                )
+                .await?
+        }
+        "15m" => {
+            state
+                .reader
+                .results(
+                    view::ohlcv_15min::table
+                        .select((
+                            view::ohlcv_15min::bucket,
+                            view::ohlcv_15min::pool_id,
+                            view::ohlcv_15min::open,
+                            view::ohlcv_15min::high,
+                            view::ohlcv_15min::low,
+                            view::ohlcv_15min::close,
+                            view::ohlcv_15min::volume_base,
+                            view::ohlcv_15min::volume_quote,
+                        ))
+                        .filter(view::ohlcv_15min::pool_id.eq(pool_id.to_string()))
+                        .filter(view::ohlcv_15min::bucket.between(start_dt, end_dt)),
+                )
+                .await?
+        }
+        "1h" => {
+            state
+                .reader
+                .results(
+                    view::ohlcv_1h::table
+                        .select((
+                            view::ohlcv_1h::bucket,
+                            view::ohlcv_1h::pool_id,
+                            view::ohlcv_1h::open,
+                            view::ohlcv_1h::high,
+                            view::ohlcv_1h::low,
+                            view::ohlcv_1h::close,
+                            view::ohlcv_1h::volume_base,
+                            view::ohlcv_1h::volume_quote,
+                        ))
+                        .filter(view::ohlcv_1h::pool_id.eq(pool_id.to_string()))
+                        .filter(view::ohlcv_1h::bucket.between(start_dt, end_dt)),
+                )
+                .await?
+        }
+        "4h" => {
+            state
+                .reader
+                .results(
+                    view::ohlcv_4h::table
+                        .select((
+                            view::ohlcv_4h::bucket,
+                            view::ohlcv_4h::pool_id,
+                            view::ohlcv_4h::open,
+                            view::ohlcv_4h::high,
+                            view::ohlcv_4h::low,
+                            view::ohlcv_4h::close,
+                            view::ohlcv_4h::volume_base,
+                            view::ohlcv_4h::volume_quote,
+                        ))
+                        .filter(view::ohlcv_4h::pool_id.eq(pool_id.to_string()))
+                        .filter(view::ohlcv_4h::bucket.between(start_dt, end_dt)),
+                )
+                .await?
+        }
+        _ => {
+            return Err(DeepBookError::InternalError(format!(
+                "Invalid timeframe `{}`, must be one of: [{}]",
+                timeframe,
+                AVAILABLE_OHLCV_TIMEFRAMES.join(",")
+            )))
+        }
+    };
 
-    let base_decimals = base_decimals as u8;
-    let quote_decimals = quote_decimals as u8;
+    // Same scaling math as before
+    let bd = base_decimals as u8;
+    let qd = quote_decimals as u8;
+    let base_factor = (10f64).powf(bd.into());
+    let quote_factor = (10f64).powf(qd.into());
+    let price_factor = (10f64).powf((9i32 - bd as i32 + qd as i32) as f64);
 
-    let base_factor = (10f64).powf(base_decimals.into());
-    let quote_factor = (10f64).powf(quote_decimals.into());
+    let out = rows
+        .into_iter()
+        .map(|ohlc| {
+            let vol_b = (ohlc.volume_base / base_factor).to_plain_string();
+            let vol_q = (ohlc.volume_quote / quote_factor).to_plain_string();
+            let open = ohlc.open as f64 / price_factor;
+            let high = ohlc.high as f64 / price_factor;
+            let low = ohlc.low as f64 / price_factor;
+            let close = ohlc.close as f64 / price_factor;
 
-    let price_factor = (10f64).powf((9 - base_decimals + quote_decimals).into());
+            HashMap::from([
+                (
+                    "timestamp".to_string(),
+                    Value::from(ohlc.bucket.and_utc().timestamp()),
+                ),
+                ("open".to_string(), Value::from(open)),
+                ("high".to_string(), Value::from(high)),
+                ("low".to_string(), Value::from(low)),
+                ("close".to_string(), Value::from(close)),
+                ("volume_base".to_string(), Value::from(vol_b)),
+                ("volume_quote".to_string(), Value::from(vol_q)),
+            ])
+        })
+        .collect();
 
-    Ok(Json(
-        result
-            .into_iter()
-            .map(|ohlc| {
-                let vol_b = (ohlc.volume_base / base_factor).to_plain_string();
-                let vol_q = (ohlc.volume_quote / quote_factor).to_plain_string();
-
-                let open = ohlc.open as f64 / price_factor;
-                let high = ohlc.high as f64 / price_factor;
-                let low = ohlc.low as f64 / price_factor;
-                let close = ohlc.close as f64 / price_factor;
-
-                HashMap::from([
-                    (
-                        "timestamp".to_string(),
-                        Value::from(ohlc.bucket.and_utc().timestamp()),
-                    ),
-                    ("open".to_string(), Value::from(open)),
-                    ("high".to_string(), Value::from(high)),
-                    ("low".to_string(), Value::from(low)),
-                    ("close".to_string(), Value::from(close)),
-                    ("volume_base".to_string(), Value::from(vol_b)),
-                    ("volume_quote".to_string(), Value::from(vol_q)),
-                ])
-            })
-            .collect(),
-    ))
+    Ok(Json(out))
 }
 
 pub async fn avg_trade_size(
@@ -565,31 +646,60 @@ pub async fn get_volume_last_n_days(
     Path(pool_name): Path<String>,
     Query(params): Query<HashMap<String, String>>,
     State(state): State<Arc<AppState>>,
-) -> Result<Json<f64>, DeepBookError> {
+) -> Result<Json<HashMap<String, f64>>, DeepBookError> {
     // Lookup pool_id by name
 
-    let (pool_id, base_decimals, _) = state.reader.get_pool_decimals(&pool_name).await?;
+    let (pool_id, base_decimals, quote_decimals) =
+        state.reader.get_pool_decimals(&pool_name).await?;
 
     // Parse days from query parameters
     let days = params.days();
     let now = Utc::now().naive_utc();
     let start_time = now - Duration::days(days);
-    let result: Option<BigDecimal> = state
+
+    let result: Option<(BigDecimal, BigDecimal)> = state
         .reader
         .results(
             view::ohlcv_1min::table
                 .filter(view::ohlcv_1min::pool_id.eq(pool_id))
                 .filter(view::ohlcv_1min::bucket.ge(start_time))
-                .select(sum(view::ohlcv_1min::volume_base)),
+                .select((
+                    sum(view::ohlcv_1min::volume_base),
+                    sum(view::ohlcv_1min::volume_quote),
+                )),
         )
         .await
-        .map(|rows: Vec<Option<BigDecimal>>| rows.into_iter().flatten().next())
+        .map(|rows: Vec<(Option<BigDecimal>, Option<BigDecimal>)>| {
+            rows.into_iter()
+                .map(|(base, quote)| {
+                    (
+                        base.unwrap_or_else(|| BigDecimal::from(0)),
+                        quote.unwrap_or_else(|| BigDecimal::from(0)),
+                    )
+                })
+                .next()
+        })
         .map_err(|e| DeepBookError::InternalError(e.to_string()))?;
 
-    let base_volume = result.to_decimal_f64(base_decimals as u32).unwrap_or(0.0);
+    let (base_volume, quote_volume) =
+        result.unwrap_or((BigDecimal::new(0.into(), 0), BigDecimal::new(0.into(), 0)));
 
-    // Returns 0 if NULL
-    Ok(Json(base_volume))
+    let response = HashMap::from([
+        (
+            "base_volume".to_string(),
+            base_volume
+                .to_decimal_f64(base_decimals as u32)
+                .unwrap_or(0.0),
+        ),
+        (
+            "quote_volume".to_string(),
+            quote_volume
+                .to_decimal_f64(quote_decimals as u32)
+                .unwrap_or(0.0),
+        ),
+    ]);
+
+    Ok(Json(response))
 }
 
 #[derive(Debug, Serialize, diesel::QueryableByName)]

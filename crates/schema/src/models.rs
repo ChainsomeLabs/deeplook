@@ -3,7 +3,7 @@ use crate::schema::{
     pool_prices, pools, proposals, rebates, stakes, sui_error_transactions, trade_params_update,
     votes,
 };
-use crate::view::ohlcv_1min;
+use crate::view::{ohlcv_15min, ohlcv_1h, ohlcv_1min, ohlcv_4h};
 use bigdecimal::BigDecimal;
 use chrono::NaiveDateTime;
 use diesel::deserialize::FromSql;
@@ -272,6 +272,58 @@ pub struct SuiErrorTransactions {
 #[derive(Queryable, Selectable, Debug, FieldCount)]
 #[diesel(table_name = ohlcv_1min)]
 pub struct OHLCV1min {
+    pub bucket: NaiveDateTime,
+    pub pool_id: String,
+    pub open: i64,
+    pub high: i64,
+    pub low: i64,
+    pub close: i64,
+    pub volume_base: BigDecimal,
+    pub volume_quote: BigDecimal,
+}
+
+#[derive(Queryable, Selectable, Debug, FieldCount)]
+#[diesel(table_name = ohlcv_15min)]
+pub struct OHLCV15min {
+    pub bucket: NaiveDateTime,
+    pub pool_id: String,
+    pub open: i64,
+    pub high: i64,
+    pub low: i64,
+    pub close: i64,
+    pub volume_base: BigDecimal,
+    pub volume_quote: BigDecimal,
+}
+
+#[derive(Queryable, Selectable, Debug, FieldCount)]
+#[diesel(table_name = ohlcv_1h)]
+pub struct OHLCV1h {
+    pub bucket: NaiveDateTime,
+    pub pool_id: String,
+    pub open: i64,
+    pub high: i64,
+    pub low: i64,
+    pub close: i64,
+    pub volume_base: BigDecimal,
+    pub volume_quote: BigDecimal,
+}
+
+#[derive(Queryable, Selectable, Debug, FieldCount)]
+#[diesel(table_name = ohlcv_4h)]
+pub struct OHLCV4h {
+    pub bucket: NaiveDateTime,
+    pub pool_id: String,
+    pub open: i64,
+    pub high: i64,
+    pub low: i64,
+    pub close: i64,
+    pub volume_base: BigDecimal,
+    pub volume_quote: BigDecimal,
+}
+
+// table agnostic OHLCV
+#[derive(Debug, Queryable)]
+pub struct OHLCV {
     pub bucket: NaiveDateTime,
     pub pool_id: String,
     pub open: i64,
