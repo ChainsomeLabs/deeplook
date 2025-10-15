@@ -30,13 +30,13 @@ tokio-util = "0.7.15"
 tracing = "0.1.41"
 tracing-subscriber = "0.3"
 
-sui-indexer-alt-metrics = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }
-sui-indexer-alt-framework = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }
+sui-indexer-alt-metrics = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
+sui-indexer-alt-framework = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
 sui-sdk-types = { git = "https://github.com/mystenlabs/sui-rust-sdk", features = [
   "serde",
-], rev = "86a9e06" }
-telemetry-subscribers = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }
-sui-pg-db = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }
-move-core-types = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }
-sui-types = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }
-sui-sdk = { git = "https://github.com/MystenLabs/sui.git", rev = "7f45ba185ff0773331d256469c49aefb82542102" }
+], rev = "048124e484f14b9bf2a402227c9bc255c7621bc1" }
+telemetry-subscribers = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
+sui-pg-db = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
+move-core-types = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
+sui-types = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
+sui-sdk = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
