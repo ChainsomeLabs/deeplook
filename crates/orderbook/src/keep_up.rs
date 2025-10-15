@@ -65,6 +65,7 @@ pub async fn keep_up(
             ingest_concurrency: 1,
             retry_interval_ms: 200,
         },
+        None,
         metrics.registry(),
         cancel.clone(),
     )

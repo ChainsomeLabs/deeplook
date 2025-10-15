@@ -70,6 +70,7 @@ pub async fn catch_up(
             rpc_password: None,
         },
         Default::default(),
+        None,
         metrics.registry(),
         cancel.clone(),
     )

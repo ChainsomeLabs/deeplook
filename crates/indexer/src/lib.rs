@@ -13,7 +13,7 @@ pub const TESTNET_REMOTE_STORE_URL: &str = "https://checkpoints.testnet.sui.io";
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum DeeplookEnv {
     Mainnet,
-    Testnet,
+    // Testnet,
 }
 
 /// Generates a function that returns the `StructTag` for a given event type,
@@ -60,10 +60,10 @@ macro_rules! event_type_fn {
                     use models::deepbook::$($path)::+ as Event;
                     convert_struct_tag(Event::struct_type())
                 },
-                DeeplookEnv::Testnet => {
-                    use models::deepbook_testnet::$($path)::+ as Event;
-                    convert_struct_tag(Event::struct_type())
-                }
+                // DeeplookEnv::Testnet => {
+                //     use models::deepbook_testnet::$($path)::+ as Event;
+                //     convert_struct_tag(Event::struct_type())
+                // }
             }
         }
     };
@@ -73,7 +73,7 @@ impl DeeplookEnv {
     pub fn remote_store_url(&self) -> Url {
         let remote_store_url = match self {
             DeeplookEnv::Mainnet => MAINNET_REMOTE_STORE_URL,
-            DeeplookEnv::Testnet => TESTNET_REMOTE_STORE_URL,
+            // DeeplookEnv::Testnet => TESTNET_REMOTE_STORE_URL,
         };
         // Safe to unwrap on verified static URLs
         Url::parse(remote_store_url).unwrap()
