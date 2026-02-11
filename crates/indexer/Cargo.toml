@@ -10,7 +10,6 @@ edition = "2021"
 tokio.workspace = true
 sui-indexer-alt-framework.workspace = true
 move-binding-derive = { git = "https://github.com/MystenLabs/move-binding.git", rev = "2321fec265dd2c65560b412b712429d8c993c603" }
-move-types = { git = "https://github.com/MystenLabs/move-binding.git", rev = "2321fec265dd2c65560b412b712429d8c993c603" }
 sui-sdk-types.workspace = true
 sui-transaction-builder = { git = "https://github.com/mystenlabs/sui-rust-sdk", rev = "048124e484f14b9bf2a402227c9bc255c7621bc1" }
 clap = { workspace = true, features = ["env"] }
@@ -23,6 +22,7 @@ diesel = { workspace = true, features = [
   "numeric",
 ] }
 diesel-async = { workspace = true, features = ["bb8", "postgres"] }
+hex = "0.4"
 tracing.workspace = true
 async-trait.workspace = true
 bcs.workspace = true

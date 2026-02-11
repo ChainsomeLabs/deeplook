@@ -4,7 +4,7 @@ use deeplook_indexer::handlers::flash_loan_handler::FlashLoanHandler;
 use deeplook_indexer::handlers::order_fill_handler::OrderFillHandler;
 use deeplook_indexer::handlers::order_update_handler::OrderUpdateHandler;
 use deeplook_indexer::handlers::pool_price_handler::PoolPriceHandler;
-use deeplook_indexer::DeeplookEnv;
+use deeplook_indexer::DeepbookEnv;
 use fastcrypto::hash::{HashFunction, Sha256};
 use insta::assert_json_snapshot;
 use serde_json::Value;
@@ -24,34 +24,34 @@ use sui_types::full_checkpoint_content::CheckpointData;
 
 #[tokio::test]
 async fn balances_test() -> Result<(), anyhow::Error> {
-    let handler = BalancesHandler::new(DeeplookEnv::Mainnet);
+    let handler = BalancesHandler::new(DeepbookEnv::Mainnet);
     data_test("balances", handler, ["balances"]).await?;
     Ok(())
 }
 
 #[tokio::test]
 async fn flash_loan_test() -> Result<(), anyhow::Error> {
-    let handler = FlashLoanHandler::new(DeeplookEnv::Mainnet);
+    let handler = FlashLoanHandler::new(DeepbookEnv::Mainnet);
     data_test("flash_loans", handler, ["flashloans"]).await?;
     Ok(())
 }
 
 #[tokio::test]
 async fn order_fill_test() -> Result<(), anyhow::Error> {
-    let handler = OrderFillHandler::new(DeeplookEnv::Mainnet);
+    let handler = OrderFillHandler::new(DeepbookEnv::Mainnet);
     data_test("order_fill", handler, ["order_fills"]).await?;
     Ok(())
 }
 #[tokio::test]
 async fn order_update_test() -> Result<(), anyhow::Error> {
-    let handler = OrderUpdateHandler::new(DeeplookEnv::Mainnet);
+    let handler = OrderUpdateHandler::new(DeepbookEnv::Mainnet);
     data_test("order_update", handler, ["order_updates"]).await?;
     Ok(())
 }
 
 #[tokio::test]
 async fn pool_price_test() -> Result<(), anyhow::Error> {
-    let handler = PoolPriceHandler::new(DeeplookEnv::Mainnet);
+    let handler = PoolPriceHandler::new(DeepbookEnv::Mainnet);
     data_test("pool_price", handler, ["pool_prices"]).await?;
     Ok(())
 }
