@@ -1,15 +1,17 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use anyhow::Context;
-use deeplook_indexer::{DeeplookEnv, MAINNET_REMOTE_STORE_URL};
+use deeplook_indexer::{DeepbookEnv, MAINNET_REMOTE_STORE_URL};
 use prometheus::Registry;
 use sui_indexer_alt_framework::{
-    Indexer, IndexerArgs,
-    ingestion::ClientArgs,
+    Indexer, IndexerArgs, TaskArgs,
+    ingestion::{
+        ClientArgs, IngestionConfig, ingestion_client::IngestionClientArgs,
+        streaming_client::StreamingClientArgs,
+    },
     postgres::{Db, DbArgs},
 };
 use sui_indexer_alt_metrics::{MetricsArgs, MetricsService, db::DbConnectionStatsCollector};
-use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use crate::{
@@ -26,12 +28,7 @@ pub async fn catch_up(
 ) -> Result<(), anyhow::Error> {
     let registry = Registry::new_custom(Some("deeplook".into()), None)
         .context("Failed to create Prometheus registry.")?;
-    let cancel = CancellationToken::new();
-    let metrics = MetricsService::new(
-        MetricsArgs { metrics_address },
-        registry.clone(),
-        cancel.child_token(),
-    );
+    let metrics = MetricsService::new(MetricsArgs { metrics_address }, registry.clone());
 
     // Prepare the store for the indexer
     let store = Db::for_write(database_url, DbArgs::default())
@@ -60,25 +57,27 @@ pub async fn catch_up(
             first_checkpoint: Some(lowest_checkpoint + 1),
             last_checkpoint: Some(end),
             pipeline: vec![],
-            skip_watermark: true,
+            task: TaskArgs::default(),
         },
         ClientArgs {
-            remote_store_url: Some(Url::parse(MAINNET_REMOTE_STORE_URL).unwrap()),
-            local_ingestion_path: None,
-            rpc_api_url: None,
-            rpc_username: None,
-            rpc_password: None,
+            ingestion: IngestionClientArgs {
+                remote_store_url: Some(Url::parse(MAINNET_REMOTE_STORE_URL).unwrap()),
+                local_ingestion_path: None,
+                rpc_api_url: None,
+                rpc_username: None,
+                rpc_password: None,
+            },
+            streaming: StreamingClientArgs::default(),
         },
-        Default::default(),
+        IngestionConfig::default(),
         None,
         metrics.registry(),
-        cancel.clone(),
     )
     .await?;
 
     indexer
         .concurrent_pipeline(
-            OrderbookOrderUpdateHandler::new(DeeplookEnv::Mainnet, orderbook_managers),
+            OrderbookOrderUpdateHandler::new(DeepbookEnv::Mainnet, orderbook_managers),
             Default::default(),
         )
         .await?;
@@ -89,8 +88,7 @@ pub async fn catch_up(
     // and mixing together two different metrics is a bad idea (?)
     // let h_metrics = metrics.run().await?;
 
-    let _ = h_indexer.await;
-    cancel.cancel();
+    let _ = h_indexer;
     // let _ = h_metrics.await;
 
     Ok(())

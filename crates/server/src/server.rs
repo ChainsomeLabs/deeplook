@@ -36,7 +36,7 @@ use futures::future::join_all;
 use prometheus::Registry;
 use std::str::FromStr;
 use sui_indexer_alt_metrics::{MetricsArgs, MetricsService};
-use sui_json_rpc_types::{SuiObjectData, SuiObjectDataOptions, SuiObjectResponse};
+use sui_sdk::rpc_types::{SuiObjectData, SuiObjectDataOptions, SuiObjectResponse};
 use sui_sdk::SuiClientBuilder;
 use sui_types::{
     base_types::{ObjectID, ObjectRef, SuiAddress},
@@ -132,11 +132,7 @@ pub async fn run_server(
     let registry = Registry::new_custom(Some("deeplook_api".into()), None)
         .expect("Failed to create Prometheus registry.");
 
-    let metrics = MetricsService::new(
-        MetricsArgs { metrics_address },
-        registry,
-        cancellation_token.clone(),
-    );
+    let metrics = MetricsService::new(MetricsArgs { metrics_address }, registry);
 
     let state = AppState::new(database_url, db_arg, metrics.registry(), redis_url).await?;
     let socket_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), server_port);
