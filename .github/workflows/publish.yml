@@ -6,9 +6,6 @@ on:
       - "*-*"
 
 jobs:
-  rust:
-    uses: ./.github/workflows/rust.yml
-
   publish:
     runs-on: ubuntu-latest
     permissions:
