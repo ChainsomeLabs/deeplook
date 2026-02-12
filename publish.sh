@@ -15,13 +15,13 @@ SERVICE=$1
 VERSION=$2
 
 # Docker registry (change if needed)
-REGISTRY=europe-west1-docker.pkg.dev/carmine-api-381920/docker-repository
+REGISTRY=europe-west1-docker.pkg.dev/chainsomelabs/deeplook
 
 # Define Dockerfile path
 DOCKERFILE="docker/Dockerfile.$SERVICE"
 
 # Define Docker image name
-IMAGE="$REGISTRY/deeplook-$SERVICE:$VERSION"
+IMAGE="$REGISTRY/$SERVICE:$VERSION"
 
 # Check if Dockerfile exists
 if [ ! -f "$DOCKERFILE" ]; then
