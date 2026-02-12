@@ -38,6 +38,9 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+
       - name: Publish
         run: ./publish.sh "${{ steps.tag.outputs.service }}" "${{ steps.tag.outputs.version }}"
 
