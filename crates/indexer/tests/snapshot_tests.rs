@@ -10,7 +10,7 @@ use deeplook_schema::MIGRATIONS;
 use fastcrypto::hash::{HashFunction, Sha256};
 use insta::assert_json_snapshot;
 use serde_json::Value;
-use sqlx::{Column, PgPool, Row, ValueRef, types::BigDecimal};
+use sqlx::{types::BigDecimal, Column, PgPool, Row, ValueRef};
 use std::env;
 use std::fs;
 use std::path::Path;
