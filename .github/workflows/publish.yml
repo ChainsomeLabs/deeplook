@@ -10,7 +10,6 @@ jobs:
     uses: ./.github/workflows/rust.yml
 
   publish:
-    needs: rust
     runs-on: ubuntu-latest
     permissions:
       contents: write
