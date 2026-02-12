@@ -1,5 +1,5 @@
 use clap::Parser;
-use deeplook_indexer::DeeplookEnv;
+use deeplook_indexer::DeepbookEnv;
 use deeplook_orderbook::OrderbookManagerMap;
 use deeplook_orderbook::catch_up::catch_up;
 use deeplook_orderbook::checkpoint::CheckpointDigest;
@@ -37,7 +37,7 @@ struct Args {
     rpc_url: Url,
     /// Deeplook environment, defaulted to SUI mainnet.
     #[clap(env, long)]
-    env: DeeplookEnv,
+    env: DeepbookEnv,
 }
 
 #[tokio::main]

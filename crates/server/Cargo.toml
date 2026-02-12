@@ -33,9 +33,8 @@ tokio-util.workspace = true
 sui-indexer-alt-metrics.workspace = true
 telemetry-subscribers.workspace = true
 axum = { version = "0.7", features = ["json", "ws"] }
-sui-json-rpc-types = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
-sui-pg-db = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
 tower-http = { version = "0.5", features = ["cors"] }
+sui-pg-db.workspace = true
 sui-sdk.workspace = true
 
 deeplook-utils = { path = "../utils" }

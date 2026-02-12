@@ -4,11 +4,14 @@ use deeplook_indexer::handlers::flash_loan_handler::FlashLoanHandler;
 use deeplook_indexer::handlers::order_fill_handler::OrderFillHandler;
 use deeplook_indexer::handlers::order_update_handler::OrderUpdateHandler;
 use deeplook_indexer::handlers::pool_price_handler::PoolPriceHandler;
+
 use deeplook_indexer::DeepbookEnv;
+use deeplook_schema::MIGRATIONS;
 use fastcrypto::hash::{HashFunction, Sha256};
 use insta::assert_json_snapshot;
 use serde_json::Value;
-use sqlx::{Column, PgPool, Row, ValueRef};
+use sqlx::{Column, PgPool, Row, ValueRef, types::BigDecimal};
+use std::env;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -20,6 +23,7 @@ use sui_pg_db::Connection;
 use sui_pg_db::Db;
 use sui_pg_db::DbArgs;
 use sui_storage::blob::Blob;
+use sui_types::full_checkpoint_content::Checkpoint;
 use sui_types::full_checkpoint_content::CheckpointData;
 
 #[tokio::test]
@@ -56,6 +60,15 @@ async fn pool_price_test() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+#[tokio::test]
+async fn balances_indirect_interaction_test() -> Result<(), anyhow::Error> {
+    // Test that balance events from transactions that interact with DeepBook
+    // indirectly (through other protocols) are still captured
+    let handler = BalancesHandler::new(DeepbookEnv::Mainnet);
+    data_test("balances_indirect", handler, ["balances"]).await?;
+    Ok(())
+}
+
 async fn data_test<H, I>(
     test_name: &str,
     handler: H,
@@ -63,13 +76,32 @@ async fn data_test<H, I>(
 ) -> Result<(), anyhow::Error>
 where
     I: IntoIterator<Item = &'static str>,
-    H: Handler + Processor,
+    H: Processor,
+    H: Handler<Batch = Vec<<H as Processor>::Value>>,
     for<'a> H::Store: Store<Connection<'a> = Connection<'a>>,
 {
-    // Set up the temporary database
-    let temp_db = TempDb::new()?;
-    let url = temp_db.database().url();
-    let db = Arc::new(Db::for_write(url.clone(), DbArgs::default()).await?);
+    // Set up database URL based on environment
+    // IMPORTANT: Keep temp_db in scope for the entire test, otherwise it gets cleaned up
+    let (temp_db_opt, url) =
+        if env::var("USE_REAL_DB").unwrap_or_else(|_| "false".to_string()) == "true" {
+            // Use REAL PostgreSQL database - DATABASE_URL must be provided
+            let database_url = env::var("DATABASE_URL")
+                .expect("DATABASE_URL environment variable must be set when USE_REAL_DB=true");
+            (None, database_url)
+        } else {
+            // Use MOCK database (existing behavior)
+            let temp_db = TempDb::new()?;
+            let url = temp_db.database().url().to_string();
+            (Some(temp_db), url)
+        };
+
+    let db = Arc::new(Db::for_write(url.parse()?, DbArgs::default()).await?);
+
+    // Only run migrations if using mock database (real DB already has migrations)
+    if temp_db_opt.is_some() {
+        db.run_migrations(Some(&MIGRATIONS)).await?;
+    }
+
     let mut conn = db.connect().await?;
 
     // Test setup based on provided test_name
@@ -83,24 +115,32 @@ where
 
     // Check results by comparing database tables with snapshots
     for table in tables_to_check {
-        let rows = read_table(&table, &url.to_string()).await?;
-        assert_json_snapshot!(format!("{test_name}__{table}"), rows);
+        let rows = read_table(&table, &url).await?;
+
+        // Only create snapshots if using mock database
+        if temp_db_opt.is_some() {
+            assert_json_snapshot!(format!("{test_name}__{table}"), rows);
+        }
     }
+
     Ok(())
 }
 
-async fn run_pipeline<'c, T: Handler + Processor, P: AsRef<Path>>(
-    handler: &T,
+async fn run_pipeline<'c, H, P: AsRef<Path>>(
+    handler: &H,
     path: P,
     conn: &mut Connection<'c>,
 ) -> Result<(), anyhow::Error>
 where
-    T::Store: Store<Connection<'c> = Connection<'c>>,
+    H: Processor,
+    H: Handler<Batch = Vec<<H as Processor>::Value>>,
+    H::Store: Store<Connection<'c> = Connection<'c>>,
 {
     let bytes = fs::read(path)?;
-    let cp = Blob::from_bytes::<CheckpointData>(&bytes)?;
-    let result = handler.process(&Arc::new(cp))?;
-    T::commit(&result, conn).await?;
+    let data = Blob::from_bytes::<CheckpointData>(&bytes)?;
+    let cp: Checkpoint = data.into();
+    let result = handler.process(&Arc::new(cp)).await?;
+    handler.commit(&result, conn).await?;
     Ok(())
 }
 
@@ -132,10 +172,14 @@ async fn read_table(table_name: &str, db_url: &str) -> Result<Vec<Value>, anyhow
 
                 let value = if let Ok(v) = row.try_get::<String, _>(column_name) {
                     Value::String(v)
+                } else if let Ok(v) = row.try_get::<i16, _>(column_name) {
+                    Value::String(v.to_string())
                 } else if let Ok(v) = row.try_get::<i32, _>(column_name) {
-                    Value::Number(v.into())
+                    Value::String(v.to_string())
                 } else if let Ok(v) = row.try_get::<i64, _>(column_name) {
-                    Value::Number(v.into())
+                    Value::String(v.to_string())
+                } else if let Ok(v) = row.try_get::<BigDecimal, _>(column_name) {
+                    Value::String(v.to_string())
                 } else if let Ok(v) = row.try_get::<bool, _>(column_name) {
                     Value::Bool(v)
                 } else if let Ok(v) = row.try_get::<Value, _>(column_name) {
@@ -178,6 +222,9 @@ fn get_checkpoints_in_folder(folder: &Path) -> Result<Vec<String>, anyhow::Error
             files.push(path.display().to_string());
         }
     }
+
+    // Sort files to ensure deterministic processing order across different systems
+    (&mut *files).sort();
 
     Ok(files)
 }

@@ -1,7 +1,7 @@
 use url::Url;
 
 pub mod handlers;
-pub(crate) mod models;
+pub mod models;
 pub mod traits;
 pub mod utils;
 

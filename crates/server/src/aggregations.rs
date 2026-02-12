@@ -6,7 +6,7 @@ use std::{collections::HashMap, i64, sync::Arc};
 use url::Url;
 
 use std::time::{SystemTime, UNIX_EPOCH};
-use sui_json_rpc_types::{SuiObjectData, SuiObjectDataOptions, SuiObjectResponse};
+use sui_sdk::rpc_types::{SuiObjectData, SuiObjectDataOptions, SuiObjectResponse};
 use sui_sdk::SuiClientBuilder;
 use sui_types::{
     base_types::{ObjectID, ObjectRef, SuiAddress},

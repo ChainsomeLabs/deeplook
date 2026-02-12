@@ -13,9 +13,9 @@ members = [
 bigdecimal = { version = "0.4.8", features = ["serde"] }
 chrono = { version = "=0.4.41", features = ["clock", "serde"] }
 tokio = "1.47.1"
-serde = { version = "1.0.217", features = ["derive"] }
-serde_json = "1.0.138"
-serde_with = "3.14.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+serde_with = "3.16.1"
 diesel = "2.2.7"
 diesel-async = "0.5.2"
 diesel_migrations = "2.2.0"
@@ -30,13 +30,14 @@ tokio-util = "0.7.15"
 tracing = "0.1.41"
 tracing-subscriber = "0.3"
 
-sui-indexer-alt-metrics = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
-sui-indexer-alt-framework = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
+sui-indexer-alt-metrics = { git = "https://github.com/MystenLabs/sui.git", rev = "c7566e601c9a64154850c1cb074a90d7fc11bba4" }
+sui-indexer-alt-framework = { git = "https://github.com/MystenLabs/sui.git", rev = "c7566e601c9a64154850c1cb074a90d7fc11bba4" }
 sui-sdk-types = { git = "https://github.com/mystenlabs/sui-rust-sdk", features = [
   "serde",
 ], rev = "048124e484f14b9bf2a402227c9bc255c7621bc1" }
-telemetry-subscribers = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
-sui-pg-db = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
-move-core-types = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
-sui-types = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
-sui-sdk = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
+telemetry-subscribers = { git = "https://github.com/MystenLabs/sui.git", rev = "c7566e601c9a64154850c1cb074a90d7fc11bba4" }
+sui-pg-db = { git = "https://github.com/MystenLabs/sui.git", rev = "c7566e601c9a64154850c1cb074a90d7fc11bba4" }
+move-core-types = { git = "https://github.com/MystenLabs/sui.git", rev = "c7566e601c9a64154850c1cb074a90d7fc11bba4" }
+sui-types = { git = "https://github.com/MystenLabs/sui.git", rev = "c7566e601c9a64154850c1cb074a90d7fc11bba4" }
+sui-sdk = { git = "https://github.com/MystenLabs/sui.git", rev = "c7566e601c9a64154850c1cb074a90d7fc11bba4" }
+sui-field-count = { git = "https://github.com/MystenLabs/sui.git", rev = "c7566e601c9a64154850c1cb074a90d7fc11bba4" }

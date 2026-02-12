@@ -9,7 +9,7 @@ edition = "2021"
 [dependencies]
 bigdecimal.workspace = true
 chrono.workspace = true
-sui-field-count = { git = "https://github.com/MystenLabs/sui.git", rev = "7f1b81169e966fc1af6e3cbb1a3180fb577af075" }
+sui-field-count.workspace = true
 diesel = { workspace = true, features = [
   "postgres",
   "uuid",
