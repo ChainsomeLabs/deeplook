@@ -102,6 +102,28 @@ impl Cache {
 
         Ok(())
     }
+
+    pub fn delete_by_prefixes(&mut self, prefixes: &[&str]) -> Result<usize, CacheError> {
+        let mut deleted = 0usize;
+
+        for prefix in prefixes {
+            let pattern = format!("{}*", prefix);
+            let keys: Vec<String> = redis::cmd("KEYS")
+                .arg(&pattern)
+                .query(&mut self.redis_connection)
+                .map_err(CacheError::Redis)?;
+
+            if !keys.is_empty() {
+                let removed: usize = redis::cmd("DEL")
+                    .arg(&keys)
+                    .query(&mut self.redis_connection)
+                    .map_err(CacheError::Redis)?;
+                deleted += removed;
+            }
+        }
+
+        Ok(deleted)
+    }
 }
 
 #[derive(Clone)]

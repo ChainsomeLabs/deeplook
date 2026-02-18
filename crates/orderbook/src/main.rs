@@ -58,7 +58,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .await
         .expect("Failed building sui client");
 
-    let cache = Cache::new(redis_url);
+    let mut cache = Cache::new(redis_url);
+    let deleted = cache
+        .delete_by_prefixes(&["orderbook::", "latest_trades::"])
+        .map_err(|e| anyhow::anyhow!("failed clearing redis startup keys: {:?}", e))?;
+    info!("Cleared {} Redis keys on startup", deleted);
 
     // if None index all pools, if Some index only pool names in the list
     let whitelisted_pools: Option<Vec<&'static str>> = None;
