@@ -14,6 +14,8 @@ pub mod handlers;
 pub mod historic_orderbook;
 pub mod keep_up;
 pub mod orderbook;
+pub mod replay;
+pub mod runtime_store;
 
 /// Get orderbook manager by pool_id or pool_name
 pub type OrderbookManagerMap = HashMap<String, Arc<Mutex<OrderbookManager>>>;

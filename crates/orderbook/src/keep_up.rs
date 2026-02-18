@@ -9,21 +9,21 @@ use sui_indexer_alt_framework::{
         ClientArgs, IngestionConfig, ingestion_client::IngestionClientArgs,
         streaming_client::StreamingClientArgs,
     },
-    postgres::{Db, DbArgs},
+    pipeline::sequential::SequentialConfig,
 };
-use sui_indexer_alt_metrics::{MetricsArgs, MetricsService, db::DbConnectionStatsCollector};
+use sui_indexer_alt_metrics::{MetricsArgs, MetricsService};
 use tracing::info;
 use url::Url;
 
 use crate::{
     OrderbookManagerMap, handlers::orderbook_order_update_handler::OrderbookOrderUpdateHandler,
+    runtime_store::RuntimeStore,
 };
 
 /// Takes orderbook managers, that are caught up, and keeps them
-/// up to date indexing checkpoints one at a time to make sure
-/// orderbooks are always correct.
+/// up to date from live checkpoints without writing to Postgres.
 pub async fn keep_up(
-    database_url: Url,
+    _database_url: Url,
     metrics_address: SocketAddr,
     orderbook_managers: Arc<OrderbookManagerMap>,
     start: u64,
@@ -31,16 +31,7 @@ pub async fn keep_up(
     let registry = Registry::new_custom(Some("deeplook".into()), None)
         .context("Failed to create Prometheus registry.")?;
     let metrics = MetricsService::new(MetricsArgs { metrics_address }, registry.clone());
-
-    // Prepare the store for the indexer
-    let store = Db::for_write(database_url, DbArgs::default())
-        .await
-        .context("Failed to connect to database")?;
-
-    registry.register(Box::new(DbConnectionStatsCollector::new(
-        Some("deepbook_indexer_db"),
-        store.clone(),
-    )))?;
+    let store = RuntimeStore::default();
 
     let mut indexer = Indexer::new(
         store,
@@ -67,9 +58,9 @@ pub async fn keep_up(
     .await?;
 
     indexer
-        .concurrent_pipeline(
+        .sequential_pipeline(
             OrderbookOrderUpdateHandler::new(DeepbookEnv::Mainnet, orderbook_managers),
-            Default::default(),
+            SequentialConfig::default(),
         )
         .await?;
 

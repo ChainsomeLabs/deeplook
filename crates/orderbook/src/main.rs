@@ -2,7 +2,6 @@ use clap::Parser;
 use deeplook_indexer::DeepbookEnv;
 use deeplook_orderbook::OrderbookManagerMap;
 use deeplook_orderbook::catch_up::catch_up;
-use deeplook_orderbook::checkpoint::CheckpointDigest;
 use deeplook_orderbook::keep_up::keep_up;
 use deeplook_orderbook::orderbook::OrderbookManager;
 use deeplook_utils::cache::Cache;
@@ -95,34 +94,37 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let orderbook_managers = Arc::new(ob_manager_map);
 
-    let latest_checkpoint = CheckpointDigest::get_sequence_number(Arc::new(sui_client))
-        .await
-        .expect("failed getting latest checkpoint");
-
     let start = Instant::now();
     let catch_up_result = catch_up(
         database_url.clone(),
         metrics_address,
         orderbook_managers.clone(),
-        latest_checkpoint,
+        u64::MAX,
     )
     .await;
 
     let duration = start.elapsed();
 
-    match catch_up_result {
-        Ok(_) => info!("Orderbooks caught up in {}s", duration.as_secs()),
+    let caught_up_checkpoint = match catch_up_result {
+        Ok(checkpoint) => {
+            info!(
+                "Orderbooks caught up in {}s to checkpoint {}",
+                duration.as_secs(),
+                checkpoint
+            );
+            checkpoint
+        }
         Err(e) => {
             error!("catching up failed: {:#?}", e);
             return Err(e);
         }
-    }
+    };
 
     keep_up(
         database_url,
         metrics_address,
         orderbook_managers,
-        latest_checkpoint + 1,
+        caught_up_checkpoint + 1,
     )
     .await
 }

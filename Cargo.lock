@@ -2267,6 +2267,7 @@ dependencies = [
  "move-core-types 0.0.4 (git+https://github.com/MystenLabs/sui.git?rev=c7566e601c9a64154850c1cb074a90d7fc11bba4)",
  "prometheus",
  "redis",
+ "scoped-futures",
  "serde",
  "serde_json",
  "serde_with",
